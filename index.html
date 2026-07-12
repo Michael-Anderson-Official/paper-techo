@@ -183,6 +183,94 @@
     border-radius: 3px 9px 9px 3px;
   }
 
+  /* 右端のインデックスタブ */
+  .book-tabs {
+    position: absolute;
+    right: 0;
+    top: 130px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 20; /* ページ(下)とめくり中の紙(30)の間 */
+  }
+  .book-tab {
+    width: 32px;
+    height: 46px;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-right: none;
+    border-radius: 9px 0 0 9px;
+    background: linear-gradient(180deg, #ece4cf, #ded5bc);
+    color: #6b6046;
+    font-family: inherit;
+    font-size: 15px;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: -2px 2px 5px rgba(60, 45, 25, 0.18);
+  }
+  .book-tab.active {
+    background: linear-gradient(180deg, #f8f3e6, #efe8d6);
+    color: #454a58;
+    width: 38px;
+    font-weight: 600;
+  }
+
+  /* 月のカレンダーページ */
+  .month-grid {
+    position: absolute;
+    top: 96px;
+    left: 18px;
+    right: 14px;
+    bottom: 18px;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: 24px;
+    grid-auto-rows: 1fr;
+  }
+  .mg-head {
+    font-size: 12px;
+    color: #8a8d99;
+    text-align: center;
+    align-self: center;
+  }
+  .mg-head.dow-sun { color: #c4645c; }
+  .mg-head.dow-sat { color: #5b7fa6; }
+  .mg-cell {
+    border-top: 1px solid rgba(110, 130, 160, 0.3);
+    padding: 2px 3px;
+    position: relative;
+    font-size: 15px;
+    color: #4a4e5c;
+    cursor: pointer;
+    min-height: 0;
+  }
+  .mg-cell .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    line-height: 1;
+  }
+  .mg-cell .num.dow-sun { color: #c4645c; }
+  .mg-cell .num.dow-sat { color: #5b7fa6; }
+  /* 今日: 赤鉛筆で囲んだ丸（少し歪ませて手描き感） */
+  .mg-cell .num.today {
+    border: 2px solid rgba(200, 80, 70, 0.75);
+    border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
+    transform: rotate(-4deg);
+  }
+  /* 書き込みがある日: 数字の下の鉛筆の短い線 */
+  .mg-cell .mark {
+    position: absolute;
+    left: 7px;
+    top: 28px;
+    transform: rotate(-2deg);
+    width: 16px;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(58, 60, 72, 0.4);
+  }
+
   /* ページ右下の「つまみ」ヒント */
   .corner-hint {
     position: absolute;
@@ -261,6 +349,13 @@
     .corner-hint {
       bottom: calc(52px + env(safe-area-inset-bottom, 0px));
     }
+    .book-tabs {
+      top: calc(130px + env(safe-area-inset-top, 0px));
+    }
+    .month-grid {
+      top: calc(96px + env(safe-area-inset-top, 0px));
+      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    }
   }
 
   /* 保存インジケータ（さりげなく） */
@@ -284,12 +379,17 @@
   <div class="paper" id="underPage" style="display:none;"></div>
   <!-- 今のページ -->
   <div class="paper" id="currentPage"></div>
+  <!-- 右端のインデックスタブ（本物の手帳の見出しタブ） -->
+  <div class="book-tabs">
+    <button id="tabDay" type="button" class="book-tab active" aria-label="日のページ">日</button>
+    <button id="tabMonth" type="button" class="book-tab" aria-label="月のカレンダー">月</button>
+  </div>
 </div>
 
 <div class="toolbar">
-  <button id="prevBtn" type="button" aria-label="前の日">◀ 前の日</button>
+  <button id="prevBtn" type="button" aria-label="前へ">◀ 前へ</button>
   <button id="todayBtn" type="button">今日</button>
-  <button id="nextBtn" type="button" aria-label="次の日">次の日 ▶</button>
+  <button id="nextBtn" type="button" aria-label="次へ">次へ ▶</button>
   <button id="penBtn" type="button" aria-label="えんぴつ">✏️</button>
   <button id="eraserBtn" type="button" aria-label="消しゴム" style="display:none;">消しゴム</button>
 </div>
@@ -324,8 +424,33 @@
   }
 
   var currentISO = toISO(new Date());
+  // ビューは 'day:YYYY-MM-DD'（日のページ）か 'month:YYYY-MM'（月のカレンダー）
+  var currentView = 'day:' + currentISO;
   var penMode = false;
   var eraserMode = false;
+
+  function viewParts(view) {
+    var p = view.split(':');
+    if (p[0] === 'month') {
+      var ym = p[1].split('-');
+      return { type: 'month', y: +ym[0], m: +ym[1] };
+    }
+    return { type: 'day', iso: p[1] };
+  }
+
+  // 前後のページ（日ページなら前後の日、月ページなら前後の月）
+  function stepView(view, dir) {
+    var v = viewParts(view);
+    if (v.type === 'day') return 'day:' + addDays(v.iso, dir);
+    var m = v.m + dir, y = v.y;
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    return 'month:' + y + '-' + String(m).padStart(2, '0');
+  }
+
+  function hasEntry(iso) {
+    return !!((localStorage.getItem(keyText(iso)) || '').trim() || localStorage.getItem(keyInk(iso)));
+  }
 
   // ---- ストレージ ----
   function keyText(iso) { return 'pt:' + iso + ':text'; }
@@ -346,43 +471,101 @@
     return '';
   }
 
-  function buildPageContent(iso, interactive) {
-    var d = fromISO(iso);
+  function buildPageContent(view, interactive) {
+    var v = viewParts(view);
     var frag = document.createDocumentFragment();
-
     var head = document.createElement('div');
     head.className = 'page-date';
-    head.innerHTML =
-      '<span class="big">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
-      '<span class="' + dowClass(d) + '">（' + DOW[d.getDay()] + '）</span></span>' +
-      '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() + '</span>';
-    frag.appendChild(head);
+    var canvas = null;
+    var iso = null;
 
-    var ta = document.createElement('textarea');
-    ta.className = 'page-text';
-    ta.placeholder = interactive ? 'きょうの計画を書く…' : '';
-    ta.value = localStorage.getItem(keyText(iso)) || '';
-    ta.spellcheck = false;
-    if (interactive) {
-      ta.addEventListener('input', function () {
-        localStorage.setItem(keyText(iso), ta.value);
-        flashSaved();
-      });
+    if (v.type === 'day') {
+      iso = v.iso;
+      var d = fromISO(iso);
+      head.innerHTML =
+        '<span class="big">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
+        '<span class="' + dowClass(d) + '">（' + DOW[d.getDay()] + '）</span></span>' +
+        '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() + '</span>';
+      frag.appendChild(head);
+
+      var ta = document.createElement('textarea');
+      ta.className = 'page-text';
+      ta.placeholder = interactive ? 'きょうの計画を書く…' : '';
+      ta.value = localStorage.getItem(keyText(iso)) || '';
+      ta.spellcheck = false;
+      if (interactive) {
+        ta.addEventListener('input', function () {
+          localStorage.setItem(keyText(iso), ta.value);
+          flashSaved();
+        });
+      } else {
+        ta.readOnly = true;
+        ta.tabIndex = -1;
+      }
+      frag.appendChild(ta);
+
+      canvas = document.createElement('canvas');
+      canvas.className = 'page-ink';
+      frag.appendChild(canvas);
     } else {
-      ta.readOnly = true;
-      ta.tabIndex = -1;
+      var first = new Date(v.y, v.m - 1, 1);
+      head.innerHTML =
+        '<span class="big">' + v.y + '年' + v.m + '月</span>' +
+        '<span class="small">' + warekiOf(first) + '</span>';
+      frag.appendChild(head);
+      frag.appendChild(buildMonthGrid(v.y, v.m, interactive));
     }
-    frag.appendChild(ta);
-
-    var canvas = document.createElement('canvas');
-    canvas.className = 'page-ink';
-    frag.appendChild(canvas);
 
     var corner = document.createElement('div');
     corner.className = 'corner-hint';
     frag.appendChild(corner);
 
-    return { frag: frag, canvas: canvas };
+    return { frag: frag, canvas: canvas, iso: iso };
+  }
+
+  // 月のカレンダー。書き込みがある日には鉛筆のしるし、今日は赤鉛筆の丸。
+  // 日付タップでその日のページへめくれる
+  function buildMonthGrid(y, m, interactive) {
+    var grid = document.createElement('div');
+    grid.className = 'month-grid';
+    DOW.forEach(function (name, i) {
+      var h = document.createElement('div');
+      h.className = 'mg-head' + (i === 0 ? ' dow-sun' : (i === 6 ? ' dow-sat' : ''));
+      h.textContent = name;
+      grid.appendChild(h);
+    });
+    var startDow = new Date(y, m - 1, 1).getDay();
+    var days = new Date(y, m, 0).getDate();
+    var todayISO = toISO(new Date());
+    for (var pad = 0; pad < startDow; pad++) {
+      var empty = document.createElement('div');
+      empty.className = 'mg-cell';
+      grid.appendChild(empty);
+    }
+    for (var day = 1; day <= days; day++) {
+      (function (day) {
+        var d = new Date(y, m - 1, day);
+        var iso = toISO(d);
+        var cell = document.createElement('div');
+        cell.className = 'mg-cell';
+        var num = document.createElement('span');
+        num.className = ('num ' + dowClass(d) + (iso === todayISO ? ' today' : '')).trim();
+        num.textContent = day;
+        cell.appendChild(num);
+        if (hasEntry(iso)) {
+          var mark = document.createElement('span');
+          mark.className = 'mark';
+          cell.appendChild(mark);
+        }
+        if (interactive) {
+          cell.addEventListener('click', function () {
+            flipTo('day:' + iso, 1);
+          });
+        }
+        grid.appendChild(cell);
+      })(day);
+    }
+    return grid;
   }
 
   // canvasにインク画像を読み込む（サイズ確定後に呼ぶ）
@@ -479,15 +662,36 @@
   }
 
   // ---- ページの描画 ----
-  function renderPage(el, iso, interactive) {
+  function renderPage(el, view, interactive) {
     el.innerHTML = '';
-    var built = buildPageContent(iso, interactive);
+    var built = buildPageContent(view, interactive);
     el.appendChild(built.frag);
-    // レイアウト確定後にインクを読み込む
-    requestAnimationFrame(function () {
-      setupInk(built.canvas, iso);
-      if (interactive) attachPencil(built.canvas, iso);
-    });
+    if (built.canvas) {
+      // レイアウト確定後にインクを読み込む（日ページのみ）
+      requestAnimationFrame(function () {
+        setupInk(built.canvas, built.iso);
+        if (interactive) attachPencil(built.canvas, built.iso);
+      });
+    }
+    if (interactive) updateChrome(view);
+  }
+
+  // タブの選択状態と鉛筆ボタンの出し分け（月のページに鉛筆は無い）
+  function updateChrome(view) {
+    var isDay = viewParts(view).type === 'day';
+    document.getElementById('tabDay').classList.toggle('active', isDay);
+    document.getElementById('tabMonth').classList.toggle('active', !isDay);
+    var penB = document.getElementById('penBtn');
+    var erB = document.getElementById('eraserBtn');
+    penB.style.display = isDay ? '' : 'none';
+    if (!isDay && penMode) {
+      penMode = false;
+      eraserMode = false;
+      document.getElementById('book').classList.remove('pen-mode');
+      penB.classList.remove('active');
+      erB.style.display = 'none';
+      erB.classList.remove('active');
+    }
   }
 
   // ---- ページめくり ----
@@ -495,8 +699,8 @@
   // 離したとき、進み具合としきい値・勢い（フリック）でめくり切るか元に戻すか決める
   var flipping = false;
 
-  // めくる1枚を用意する。dir>0=次の日（前面=今のページ）、dir<0=前の日（前面=行き先）
-  function prepareLeaf(dir, targetISO) {
+  // めくる1枚を用意する。dir>0=先へ（前面=今のページ）、dir<0=前へ（前面=行き先）
+  function prepareLeaf(dir, targetView) {
     var book = document.getElementById('book');
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
@@ -511,7 +715,7 @@
     leaf.appendChild(front);
     leaf.appendChild(back);
 
-    renderPage(under, targetISO, false);
+    renderPage(under, targetView, false);
     if (dir > 0) {
       // 下に行き先を見せて、今のページがめくれていく
       under.style.display = 'block';
@@ -541,7 +745,7 @@
   }
 
   // 離した後の着地。commit=trueでめくり切り、falseで元に戻す
-  function settleLeaf(leaf, dir, commit, targetISO) {
+  function settleLeaf(leaf, dir, commit, targetView) {
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
     leaf.style.transition = 'transform 0.42s cubic-bezier(0.3, 0.1, 0.3, 1)';
@@ -554,8 +758,10 @@
     });
     setTimeout(function () {
       if (commit) {
-        currentISO = targetISO;
-        renderPage(current, currentISO, true);
+        currentView = targetView;
+        var v = viewParts(targetView);
+        if (v.type === 'day') currentISO = v.iso;
+        renderPage(current, currentView, true);
       }
       current.style.visibility = 'visible';
       under.style.display = 'none';
@@ -564,28 +770,37 @@
     }, 470);
   }
 
-  // ボタンからのめくり（一気にめくり切る）
-  function flipTo(nextISO, dir) {
-    if (flipping || nextISO === currentISO) return;
+  // ボタン・タブからのめくり（一気にめくり切る）
+  function flipTo(nextView, dir) {
+    if (flipping || nextView === currentView) return;
     flipping = true;
-    var leaf = prepareLeaf(dir, nextISO);
+    var leaf = prepareLeaf(dir, nextView);
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        settleLeaf(leaf, dir, true, nextISO);
+        settleLeaf(leaf, dir, true, nextView);
       });
     });
   }
 
   // ---- 操作 ----
   document.getElementById('nextBtn').addEventListener('click', function () {
-    flipTo(addDays(currentISO, 1), 1);
+    flipTo(stepView(currentView, 1), 1);
   });
   document.getElementById('prevBtn').addEventListener('click', function () {
-    flipTo(addDays(currentISO, -1), -1);
+    flipTo(stepView(currentView, -1), -1);
   });
   document.getElementById('todayBtn').addEventListener('click', function () {
     var t = toISO(new Date());
-    flipTo(t, t > currentISO ? 1 : -1);
+    var v = viewParts(currentView);
+    var dir = v.type === 'day' ? (t > v.iso ? 1 : -1) : -1;
+    flipTo('day:' + t, dir);
+  });
+  // インデックスタブ: 月のカレンダーへ／日のページへ帰る
+  document.getElementById('tabMonth').addEventListener('click', function () {
+    flipTo('month:' + currentISO.slice(0, 7), 1);
+  });
+  document.getElementById('tabDay').addEventListener('click', function () {
+    flipTo('day:' + currentISO, -1);
   });
 
   var penBtn = document.getElementById('penBtn');
@@ -627,11 +842,12 @@
         if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
         if (flipping) { startX = null; return; }
         var dir = dx < 0 ? 1 : -1;
+        var targetView = stepView(currentView, dir);
         flipping = true;
         active = {
           dir: dir,
-          targetISO: addDays(currentISO, dir),
-          leaf: prepareLeaf(dir, addDays(currentISO, dir)),
+          targetView: targetView,
+          leaf: prepareLeaf(dir, targetView),
           width: book.getBoundingClientRect().width,
           progress: 0,
           lastX: ev.clientX,
@@ -657,7 +873,7 @@
       var flingCommit = active.dir > 0 ? active.vel < -0.35 : active.vel > 0.35;
       var flingCancel = active.dir > 0 ? active.vel > 0.35 : active.vel < -0.35;
       var commit = flingCommit || (active.progress > 0.4 && !flingCancel);
-      settleLeaf(active.leaf, active.dir, commit, active.targetISO);
+      settleLeaf(active.leaf, active.dir, commit, active.targetView);
       active = null;
     }
     book.addEventListener('pointerup', release);
@@ -665,7 +881,7 @@
   })();
 
   // ---- 起動 ----
-  renderPage(document.getElementById('currentPage'), currentISO, true);
+  renderPage(document.getElementById('currentPage'), currentView, true);
 
   // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
