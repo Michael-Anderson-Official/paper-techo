@@ -1,0 +1,12 @@
+{
+  "name": "手ざわり手帳",
+  "short_name": "手ざわり手帳",
+  "description": "スマホなのに、紙。生の質感の手帳",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2b251f",
+  "theme_color": "#2b251f",
+  "icons": []
+}
