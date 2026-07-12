@@ -33,7 +33,10 @@
     width: min(92vw, 420px);
     height: min(78vh, 640px);
     perspective: 1600px;
+    /* 縦はネイティブスクロールに残し、横の動きはJSのめくりが受け取る */
+    touch-action: pan-y;
   }
+  .page-text { touch-action: pan-y; }
 
   /* ノートの下に重なって見える「これまでのページの束」 */
   .book::before {
@@ -437,69 +440,89 @@
   }
 
   // ---- ページめくり ----
+  // 指の動きに1:1で追従する（進む=0°→-178°、戻る=-178°→0°）。
+  // 離したとき、進み具合としきい値・勢い（フリック）でめくり切るか元に戻すか決める
   var flipping = false;
 
-  function flipTo(nextISO, dir) {
-    if (flipping || nextISO === currentISO) return;
-    flipping = true;
-
+  // めくる1枚を用意する。dir>0=次の日（前面=今のページ）、dir<0=前の日（前面=行き先）
+  function prepareLeaf(dir, targetISO) {
     var book = document.getElementById('book');
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
 
-    // 下のページ＝行き先
-    renderPage(under, nextISO, false);
-    under.style.display = 'block';
-
-    // めくる1枚（前面=今のページのクローン、背面=紙の裏）
     var leaf = document.createElement('div');
     leaf.className = 'leaf';
+    leaf.style.transition = 'none';
     var front = document.createElement('div');
     front.className = 'face front';
-    var frontPaper = current.cloneNode(true);
-    frontPaper.id = '';
-    frontPaper.style.display = 'block';
-    front.appendChild(frontPaper);
     var back = document.createElement('div');
     back.className = 'face back';
     leaf.appendChild(front);
     leaf.appendChild(back);
-    book.appendChild(leaf);
 
+    renderPage(under, targetISO, false);
     if (dir > 0) {
-      // 次の日へ: 今のページが左へめくれていく
+      // 下に行き先を見せて、今のページがめくれていく
+      under.style.display = 'block';
+      var clone = current.cloneNode(true);
+      clone.id = '';
+      clone.style.visibility = 'visible';
+      front.appendChild(clone);
       current.style.visibility = 'hidden';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          leaf.style.transform = 'rotateY(-178deg)';
-        });
-      });
+      leaf.style.transform = 'rotateY(0deg)';
     } else {
-      // 前の日へ: 左から1枚戻ってくる。leafの前面は行き先のページ
-      front.innerHTML = '';
-      var backPaper = under.cloneNode(true);
-      backPaper.id = '';
-      front.appendChild(backPaper);
+      // 今のページは下に見えたまま、左から行き先が1枚戻ってくる
+      var clone2 = under.cloneNode(true);
+      clone2.id = '';
+      clone2.style.display = 'block';
+      front.appendChild(clone2);
       under.style.display = 'none';
-      current.style.visibility = 'visible';
-      leaf.style.transition = 'none';
       leaf.style.transform = 'rotateY(-178deg)';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          leaf.style.transition = '';
-          leaf.style.transform = 'rotateY(0deg)';
-        });
-      });
     }
+    book.appendChild(leaf);
+    return leaf;
+  }
 
+  // progress 0..1（1=めくり切った状態）
+  function setLeafProgress(leaf, dir, progress) {
+    var angle = dir > 0 ? -progress * 178 : -178 + progress * 178;
+    leaf.style.transform = 'rotateY(' + angle + 'deg)';
+  }
+
+  // 離した後の着地。commit=trueでめくり切り、falseで元に戻す
+  function settleLeaf(leaf, dir, commit, targetISO) {
+    var current = document.getElementById('currentPage');
+    var under = document.getElementById('underPage');
+    leaf.style.transition = 'transform 0.42s cubic-bezier(0.3, 0.1, 0.3, 1)';
+    requestAnimationFrame(function () {
+      if (commit) {
+        leaf.style.transform = dir > 0 ? 'rotateY(-178deg)' : 'rotateY(0deg)';
+      } else {
+        leaf.style.transform = dir > 0 ? 'rotateY(0deg)' : 'rotateY(-178deg)';
+      }
+    });
     setTimeout(function () {
-      currentISO = nextISO;
-      renderPage(current, currentISO, true);
+      if (commit) {
+        currentISO = targetISO;
+        renderPage(current, currentISO, true);
+      }
       current.style.visibility = 'visible';
       under.style.display = 'none';
       if (leaf.parentNode) leaf.parentNode.removeChild(leaf);
       flipping = false;
-    }, 660);
+    }, 470);
+  }
+
+  // ボタンからのめくり（一気にめくり切る）
+  function flipTo(nextISO, dir) {
+    if (flipping || nextISO === currentISO) return;
+    flipping = true;
+    var leaf = prepareLeaf(dir, nextISO);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        settleLeaf(leaf, dir, true, nextISO);
+      });
+    });
   }
 
   // ---- 操作 ----
@@ -529,24 +552,65 @@
     eraserBtn.classList.toggle('active', eraserMode);
   });
 
-  // スワイプでめくる（ペンモード中は無効。紙の端をつまむイメージ）
+  // 指の動きに追従するめくり（ペンモード中は無効）。
+  // 横に動き始めた瞬間に1枚つくり、指のXに合わせて角度を更新。
+  // 離したら「4割超えた or フリックの勢い」でめくり切る、それ以外は元に戻る
   (function () {
-    var startX = null, startY = null;
     var book = document.getElementById('book');
+    var startX = null, startY = null;
+    var active = null; // { leaf, dir, targetISO, width, progress, lastX, lastT, vel }
+
     book.addEventListener('pointerdown', function (ev) {
-      if (penMode) return;
+      if (penMode || flipping) { startX = null; return; }
       startX = ev.clientX;
       startY = ev.clientY;
+      active = null;
     });
-    book.addEventListener('pointerup', function (ev) {
+
+    book.addEventListener('pointermove', function (ev) {
       if (penMode || startX == null) return;
       var dx = ev.clientX - startX;
       var dy = ev.clientY - startY;
-      startX = null;
-      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.6) {
-        flipTo(addDays(currentISO, dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
+      if (!active) {
+        // 横方向の意思がはっきりしてからめくり始める（縦スクロールと衝突させない）
+        if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+        if (flipping) { startX = null; return; }
+        var dir = dx < 0 ? 1 : -1;
+        flipping = true;
+        active = {
+          dir: dir,
+          targetISO: addDays(currentISO, dir),
+          leaf: prepareLeaf(dir, addDays(currentISO, dir)),
+          width: book.getBoundingClientRect().width,
+          progress: 0,
+          lastX: ev.clientX,
+          lastT: ev.timeStamp,
+          vel: 0
+        };
+        try { book.setPointerCapture(ev.pointerId); } catch (e) { /* 合成イベント等 */ }
       }
+      var raw = (active.dir > 0 ? -dx : dx) / (active.width * 0.9);
+      active.progress = Math.min(1, Math.max(0, raw));
+      var dt = Math.max(1, ev.timeStamp - active.lastT);
+      active.vel = (ev.clientX - active.lastX) / dt; // px/ms（符号つき）
+      active.lastX = ev.clientX;
+      active.lastT = ev.timeStamp;
+      setLeafProgress(active.leaf, active.dir, active.progress);
+      ev.preventDefault();
     });
+
+    function release() {
+      startX = null;
+      if (!active) return;
+      // フリック: めくる方向への勢いなら進み具合が浅くても確定、逆方向なら取り消し
+      var flingCommit = active.dir > 0 ? active.vel < -0.35 : active.vel > 0.35;
+      var flingCancel = active.dir > 0 ? active.vel > 0.35 : active.vel < -0.35;
+      var commit = flingCommit || (active.progress > 0.4 && !flingCancel);
+      settleLeaf(active.leaf, active.dir, commit, active.targetISO);
+      active = null;
+    }
+    book.addEventListener('pointerup', release);
+    book.addEventListener('pointercancel', release);
   })();
 
   // ---- 起動 ----
