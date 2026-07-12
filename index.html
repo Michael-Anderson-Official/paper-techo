@@ -666,6 +666,11 @@
 
   // ---- 起動 ----
   renderPage(document.getElementById('currentPage'), currentISO, true);
+
+  // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 未対応環境 */ });
+  }
 })();
 </script>
 </body>
