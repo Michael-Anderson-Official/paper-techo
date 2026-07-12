@@ -219,6 +219,50 @@
     border-color: rgba(80, 110, 70, 0.5);
   }
 
+  /* ---- 縁なし（埋め込み）モード ----
+     スマホでは机を消して、画面のふちまで紙。iPhoneの画面そのものが手帳になる。
+     広い画面（PC）では従来の「机の上のノート」を維持する */
+  @media (max-width: 600px) {
+    .book {
+      position: fixed;
+      inset: 0;
+      width: auto;
+      height: auto;
+    }
+    .book::before { display: none; } /* ページの束の影は不要 */
+    .paper {
+      border-radius: 0;
+      /* ノッチの下まで紙を敷き、罫線の開始位置はセーフエリアぶん下げる */
+      background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px)), 0 0;
+    }
+    .leaf .face.back { border-radius: 0; }
+    .page-date {
+      top: calc(22px + env(safe-area-inset-top, 0px));
+    }
+    .page-text {
+      top: calc(88px + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+    /* 道具はうすい紙タグとして紙の上に浮かせる */
+    .toolbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      justify-content: center;
+      padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+      z-index: 50;
+    }
+    .toolbar button {
+      background: linear-gradient(180deg, rgba(243, 236, 217, 0.92), rgba(231, 223, 200, 0.92));
+      box-shadow: 0 2px 6px rgba(60, 45, 25, 0.25);
+    }
+    .corner-hint {
+      bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    }
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
