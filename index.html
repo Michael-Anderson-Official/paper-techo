@@ -1401,7 +1401,8 @@
   // iCloudカレンダーはネイティブ化（EventKit）のときに追加する方針（2026-07-13ユーザー決定）
   var WORKER_URL = 'https://keikakuchou-notify.keikakuchou-app.workers.dev';
   var GOOGLE_CLIENT_ID = '313439643849-h299dp5h354joksqhuegfp4s89oc2dkd.apps.googleusercontent.com';
-  var GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+  // events.readonly: 予定の読み取り / calendarlist.readonly: カレンダー一覧（複数カレンダー対応）
+  var GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly';
   var gcalCodeClient = null;
   var gcalAccessToken = null;
   var gcalTokenExpiresAt = 0;
@@ -1453,6 +1454,8 @@
     localStorage.removeItem('pt:google-token');
     localStorage.removeItem('pt:gcal-session-id');
     localStorage.removeItem('pt:gcal-session-secret');
+    localStorage.removeItem('pt:gcal-cals');
+    localStorage.removeItem('pt:gcal-scope-old');
     // 予定のキャッシュも消す（プライバシー）
     var doomed = [];
     for (var i = 0; i < localStorage.length; i++) {
@@ -1551,21 +1554,68 @@
     return '終日';
   }
 
+  // ユーザーのカレンダー一覧（24時間キャッシュ）。
+  // Googleの「日本の祝日」等の祝日カレンダーは、こちらで祝日を印刷済みなので二重表示を避けて除外。
+  // 旧スコープ（一覧の権限なし）で連携済みの場合は403になるので、メインのみ＋設定に案内を出す
+  function listGcalCalendars() {
+    try {
+      var cached = JSON.parse(localStorage.getItem('pt:gcal-cals') || 'null');
+      if (cached && Array.isArray(cached.ids) && Date.now() - cached.t < 24 * 60 * 60 * 1000) {
+        return Promise.resolve(cached.ids);
+      }
+    } catch (e) { /* 壊れたキャッシュは無視 */ }
+    return fetchGcalApi('https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader')
+      .then(function (res) {
+        if (res.status === 403) {
+          // 旧スコープの連携。再連携するまでメインのみ
+          localStorage.setItem('pt:gcal-scope-old', '1');
+          return { items: [{ id: 'primary' }] };
+        }
+        if (!res.ok) throw new Error('カレンダー一覧の取得に失敗しました');
+        localStorage.removeItem('pt:gcal-scope-old');
+        return res.json();
+      }).then(function (data) {
+        var ids = (data.items || []).filter(function (c) {
+          if (!c.id || c.hidden) return false;
+          if (c.selected === false) return false; // Googleカレンダー上で非表示のものは出さない
+          if (c.id.indexOf('#holiday@group.v.calendar.google.com') !== -1) return false;
+          return true;
+        }).map(function (c) { return c.id; });
+        if (ids.length === 0) ids = ['primary'];
+        localStorage.setItem('pt:gcal-cals', JSON.stringify({ t: Date.now(), ids: ids }));
+        return ids;
+      });
+  }
+
   function fetchDayEvents(iso) {
     var dayStart = fromISO(iso);
     var dayEnd = new Date(dayStart);
     dayEnd.setDate(dayStart.getDate() + 1);
-    var url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events' +
-      '?timeMin=' + encodeURIComponent(dayStart.toISOString()) +
-      '&timeMax=' + encodeURIComponent(dayEnd.toISOString()) +
-      '&singleEvents=true&orderBy=startTime&maxResults=10';
-    return fetchGcalApi(url).then(function (res) {
-      if (!res.ok) throw new Error('予定の取得に失敗しました');
-      return res.json();
-    }).then(function (data) {
-      var list = (data.items || []).map(function (ev) {
-        return { time: formatEvTime(ev), title: ev.summary || '(タイトルなし)' };
+    return listGcalCalendars().then(function (calIds) {
+      var fetches = calIds.map(function (calId) {
+        var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events' +
+          '?timeMin=' + encodeURIComponent(dayStart.toISOString()) +
+          '&timeMax=' + encodeURIComponent(dayEnd.toISOString()) +
+          '&singleEvents=true&orderBy=startTime&maxResults=10';
+        return fetchGcalApi(url).then(function (res) {
+          if (!res.ok) return { items: [] }; // 1つ失敗しても他は表示する
+          return res.json();
+        }).catch(function () { return { items: [] }; });
       });
+      return Promise.all(fetches);
+    }).then(function (results) {
+      var all = [];
+      results.forEach(function (data) {
+        (data.items || []).forEach(function (ev) {
+          all.push({
+            time: formatEvTime(ev),
+            title: ev.summary || '(タイトルなし)',
+            sort: (ev.start && ev.start.dateTime) ? new Date(ev.start.dateTime).getTime() : 0 // 終日は先頭
+          });
+        });
+      });
+      all.sort(function (a, b) { return a.sort - b.sort; });
+      var list = all.map(function (ev) { return { time: ev.time, title: ev.title }; });
       localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
       return list;
     });
@@ -1674,7 +1724,9 @@
       var btn = document.getElementById('gcalConnectBtn');
       if (!st || !btn) return;
       if (gcalConnected()) {
-        st.textContent = '連携中。その日のページの上部に予定がうすく印刷されます。';
+        st.textContent = localStorage.getItem('pt:gcal-scope-old') === '1'
+          ? '連携中（メインのカレンダーのみ）。すべてのカレンダーを表示するには、一度解除してからもう一度連携してください。'
+          : '連携中。すべてのカレンダーの予定がページに印刷されます。';
         btn.textContent = '連携を解除';
       } else {
         st.textContent = '未連携。連携すると、その日の予定がページに印刷されます（読み取りのみ）。';
