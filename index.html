@@ -809,6 +809,11 @@
     text-shadow: 0 0 6px; /* 色指定なし=文字色で光る（LEDのにじみ） */
   }
 
+  /* 引き違いスライド中の板（黒板・電光掲示板） */
+  .board-sliding {
+    box-shadow: 0 0 26px rgba(0, 0, 0, 0.5);
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -1490,20 +1495,46 @@
     return half;
   }
 
-  // めくる1枚を用意する。dir>0=先へ（前面=今のページ）、dir<0=前へ（前面=行き先）
+  // 紙ごとの切り替えかた。紙=ページをめくる、黒板・電光掲示板=引き違いスライド
+  // （黒板やLEDパネルは「めくれない」ので、教室の引き違い黒板の物理にする）
+  function transitionStyle() {
+    var p = getPaperColor();
+    return (p === 'board' || p === 'led') ? 'slide' : 'flip';
+  }
+
+  // 切り替えの1回分を用意する。戻り値はハンドル {mode, el, dir, W}
   function prepareLeaf(dir, targetView) {
     var book = document.getElementById('book');
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
 
+    // 行き先は最初から「本物」（interactive）として描いておき、
+    // 着地時は要素を入れ替えるだけにする（再描画ゼロ＝切り替えた瞬間から書ける）
+    renderPage(under, targetView, true, true);
+    under.style.pointerEvents = 'none'; // 切り替え中はまだ触れない
+
+    if (transitionStyle() === 'slide') {
+      // 引き違い: 進む=手前の板が左へ滑って後ろの板が現れる / 戻る=左から板が滑り込む
+      var W = book.getBoundingClientRect().width;
+      var slider;
+      if (dir > 0) {
+        slider = current;
+        slider.style.transform = 'translateX(0px)';
+        under.style.display = 'block';
+      } else {
+        slider = under;
+        slider.style.transform = 'translateX(' + (-W) + 'px)';
+        under.style.display = 'block';
+      }
+      slider.style.transition = 'none';
+      slider.style.zIndex = '30';
+      slider.classList.add('board-sliding');
+      return { mode: 'slide', el: slider, dir: dir, W: W };
+    }
+
     var leaf = document.createElement('div');
     leaf.className = 'leaf';
     leaf.style.transition = 'none';
-
-    // 行き先は最初から「本物」（interactive）として描いておき、
-    // 着地時は要素を入れ替えるだけにする（再描画ゼロ＝めくった瞬間から書ける）
-    renderPage(under, targetView, true, true);
-    under.style.pointerEvents = 'none'; // めくり中はまだ触れない
     var srcEl;
     if (dir > 0) {
       // 下に行き先を見せて、今のページがめくれていく
@@ -1531,14 +1562,21 @@
       leaf.style.transform = 'rotateY(-178deg)';
     }
     book.appendChild(leaf);
-    return leaf;
+    return { mode: 'flip', el: leaf, dir: dir };
   }
 
-  // progress 0..1（1=めくり切った状態）。
+  // progress 0..1（1=切り替え切った状態）。
   // 紙のしなり: 外側の半分が sin カーブで遅れてついてくる（めくり途中が最大、両端で平ら）
   var LEAF_BEND_DEG = 15;
 
-  function setLeafProgress(leaf, dir, progress) {
+  function setLeafProgress(t, progress) {
+    if (t.mode === 'slide') {
+      var x = t.dir > 0 ? -progress * t.W : -t.W + progress * t.W;
+      t.el.style.transform = 'translateX(' + x.toFixed(1) + 'px)';
+      return;
+    }
+    var leaf = t.el;
+    var dir = t.dir;
     var angle = dir > 0 ? -progress * 178 : -178 + progress * 178;
     var wave = Math.sin(progress * Math.PI);
     var bend = (dir > 0 ? 1 : -1) * LEAF_BEND_DEG * wave;
@@ -1593,8 +1631,50 @@
   // 離した後の着地。commit=trueでめくり切り、falseで元に戻す。
   // 状態の確定はアニメの「開始時」に済ませ、470ms後の後片付けは見た目だけ。
   // だから着地アニメ中でも次のめくりを始められる（finishSettleNowで早送り）
-  function settleLeaf(leaf, dir, commit, targetView) {
+  function settleLeaf(t, commit, targetView) {
     var ease = 'cubic-bezier(0.3, 0.1, 0.3, 1)';
+    var dir = t.dir;
+
+    if (t.mode === 'slide') {
+      var slider = t.el;
+      var finishVisualSlide = null;
+      if (commit) {
+        // スライドは両方向とも、見た目の入れ替えは板が滑り切ってから
+        finishVisualSlide = commitPages(targetView, true);
+      }
+      slider.style.transition = 'transform 0.42s ' + ease;
+      requestAnimationFrame(function () {
+        if (commit) {
+          slider.style.transform = dir > 0 ? 'translateX(' + (-t.W) + 'px)' : 'translateX(0px)';
+        } else {
+          slider.style.transform = dir > 0 ? 'translateX(0px)' : 'translateX(' + (-t.W) + 'px)';
+        }
+      });
+      var cleanupSlide = function () {
+        if (finishVisualSlide) finishVisualSlide();
+        if (!commit) {
+          var underNow = document.getElementById('underPage');
+          if (underNow) underNow.style.display = 'none';
+        }
+        // 滑らせた板のインラインを掃除（両ページとも安全に）
+        ['currentPage', 'underPage'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.style.transition = 'none';
+          el.style.transform = '';
+          el.style.zIndex = '';
+          el.classList.remove('board-sliding');
+        });
+        flipping = false;
+      };
+      pendingSettle = { cleanup: cleanupSlide, timer: setTimeout(function () {
+        pendingSettle = null;
+        cleanupSlide();
+      }, 470) };
+      return;
+    }
+
+    var leaf = t.el;
     var shadow = document.getElementById('flipShadow');
     var finishVisual = null;
     if (commit) {
@@ -1647,17 +1727,19 @@
     return !flipping;
   }
 
-  // ボタン・タブからのめくり（一気にめくり切る。しなりはCSSアニメで）
+  // ボタン・タブからの切り替え（一気に。めくりのしなりはCSSアニメで）
   function flipTo(nextView, dir) {
     if (!readyForFlip() || nextView === currentView) return;
     flipping = true;
-    var leaf = prepareLeaf(dir, nextView);
-    leaf.classList.add(dir > 0 ? 'auto-fwd' : 'auto-back');
-    var shadow = document.getElementById('flipShadow');
-    if (shadow) shadow.classList.add('pulse');
+    var t = prepareLeaf(dir, nextView);
+    if (t.mode === 'flip') {
+      t.el.classList.add(dir > 0 ? 'auto-fwd' : 'auto-back');
+      var shadow = document.getElementById('flipShadow');
+      if (shadow) shadow.classList.add('pulse');
+    }
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        settleLeaf(leaf, dir, true, nextView);
+        settleLeaf(t, true, nextView);
       });
     });
   }
@@ -1729,7 +1811,7 @@
         active = {
           dir: dir,
           targetView: targetView,
-          leaf: prepareLeaf(dir, targetView),
+          turn: prepareLeaf(dir, targetView),
           width: book.getBoundingClientRect().width,
           progress: 0,
           lastX: ev.clientX,
@@ -1744,7 +1826,7 @@
       active.vel = (ev.clientX - active.lastX) / dt; // px/ms（符号つき）
       active.lastX = ev.clientX;
       active.lastT = ev.timeStamp;
-      setLeafProgress(active.leaf, active.dir, active.progress);
+      setLeafProgress(active.turn, active.progress);
       ev.preventDefault();
     });
 
@@ -1755,7 +1837,7 @@
       var flingCommit = active.dir > 0 ? active.vel < -0.35 : active.vel > 0.35;
       var flingCancel = active.dir > 0 ? active.vel > 0.35 : active.vel < -0.35;
       var commit = flingCommit || (active.progress > 0.4 && !flingCancel);
-      settleLeaf(active.leaf, active.dir, commit, active.targetView);
+      settleLeaf(active.turn, commit, active.targetView);
       active = null;
     }
     book.addEventListener('pointerup', release);
