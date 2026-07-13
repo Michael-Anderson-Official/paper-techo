@@ -20,6 +20,8 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; }
+  /* 描画が届かない領域（iOSの下端など）が白く見えないよう、下地も机の色にしておく */
+  html { background: #2b251f; }
 
   /* 机（背景）。木目っぽい暗色で紙を引き立てる */
   body {
@@ -418,6 +420,8 @@
      スマホでは机を消して、画面のふちまで紙。iPhoneの画面そのものが手帳になる。
      広い画面（PC）では従来の「机の上のノート」を維持する */
   @media (max-width: 600px) {
+    /* 縁なしモードでは、届かない領域も紙色にして「紙が最後まで続いてる」ように見せる */
+    html, body { background: #f8f3e6; }
     .book {
       position: fixed;
       inset: 0;
