@@ -443,15 +443,12 @@
     top: 96px;
     left: 18px;
     right: 14px;
-    bottom: 18px;
-    transition: bottom 0.18s ease;
+    /* 下端は常に選択日パネル(146px)の上。パネルの出入りでカレンダーは動かない */
+    bottom: calc(218px + env(safe-area-inset-bottom, 0px));
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     grid-template-rows: 24px;
     grid-auto-rows: 1fr;
-  }
-  body.mdp-open .month-grid {
-    bottom: var(--mdp-space, 18px);
   }
   .mg-head {
     font-size: 12px;
@@ -623,7 +620,8 @@
     }
     .month-grid {
       top: calc(96px + env(safe-area-inset-top, 0px));
-      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+      /* ツールバー64px + 選択日パネル146px + すき間8px */
+      bottom: calc(218px + env(safe-area-inset-bottom, 0px));
     }
   }
 
@@ -837,8 +835,8 @@
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(30, 22, 10, 0.35);
     padding: 10px 14px 12px;
-    max-height: 34vh;
-    overflow-y: auto;
+    height: 146px;
+    overflow: hidden;
   }
   .mdp-head {
     display: flex;
@@ -1227,7 +1225,6 @@
 
   function hideMonthDayPanel() {
     monthSel = null;
-    document.body.classList.remove('mdp-open');
     var p = document.getElementById('monthDayPanel');
     if (p) p.style.display = 'none';
     document.querySelectorAll('.mg-cell.selected').forEach(function (c) {
@@ -1255,7 +1252,9 @@
       empty.textContent = '予定はありません';
       evEl.appendChild(empty);
     } else {
-      list.forEach(function (ev) {
+      // 3行まで。4件以上は2件+「ほか◯件」で収める
+      var shown = list.length > 3 ? list.slice(0, 2) : list;
+      shown.forEach(function (ev) {
         var line = document.createElement('div');
         var t = document.createElement('span');
         t.className = 'mdp-time';
@@ -1264,6 +1263,12 @@
         line.appendChild(document.createTextNode(ev.title));
         evEl.appendChild(line);
       });
+      if (list.length > shown.length) {
+        var moreLine = document.createElement('div');
+        moreLine.className = 'mdp-empty';
+        moreLine.textContent = 'ほか ' + (list.length - shown.length) + ' 件';
+        evEl.appendChild(moreLine);
+      }
     }
     if (hasEntry(iso)) {
       var note = document.createElement('div');
@@ -1272,13 +1277,6 @@
       evEl.appendChild(note);
     }
     panel.style.display = 'block';
-    // パネルに隠れないよう、カレンダーの下端をパネルの上まで持ち上げる
-    var paper = document.getElementById('currentPage');
-    if (paper) {
-      var lift = paper.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + 8;
-      document.documentElement.style.setProperty('--mdp-space', Math.max(18, Math.round(lift)) + 'px');
-    }
-    document.body.classList.add('mdp-open');
   }
 
   // 月のカレンダー。書き込みがある日には鉛筆のしるし、今日は赤鉛筆の丸。
