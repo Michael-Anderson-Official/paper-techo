@@ -241,7 +241,8 @@
     background: transparent;
     resize: none;
     outline: none;
-    font-family: inherit;
+    /* 自分が書く欄だけ、より荒い手書きフォント（印刷部分はKlee Oneのまま） */
+    font-family: 'Yomogi', 'Klee One', cursive;
     font-size: 19px;
     line-height: 28px;
     color: var(--ink-text);
@@ -723,6 +724,12 @@
     cursor: pointer;
   }
 
+  /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い） */
+  body[data-paper="board"] .book,
+  body[data-paper="board"] .toolbar {
+    font-family: 'Yomogi', 'Klee One', cursive;
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -1163,6 +1170,11 @@
     var s = scale || 1;
     var w = Math.max(1.4, 3.2 - speed * 1.6) * s;
     var alpha = Math.max(0.28, 0.62 - speed * 0.28);
+    if (getPaperColor() === 'board') {
+      // チョークは鉛筆より太く、不透明寄り
+      w *= 1.25;
+      alpha = Math.min(0.85, alpha * 1.5);
+    }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     // 本体の線
