@@ -84,6 +84,13 @@
 - 文字速度は全体量で自動調整（30〜85ms/字）。再生中は書き込み不可・⏹で即完了・めくり/タブ操作も即完了してから実行（readyForFlip内のfinishReplayNow）・月ページでは非表示・白紙は再生しない
 - SNS画面録画→拡散の導線を狙った機能（ユーザー発案）
 
+## つかいかたの統計（2026-07-13）
+
+- 匿名・数だけの利用統計: open/flip/plan/diary/osarai/monthの回数＋選択中の紙/字/連携有無（v="paper/font/0|1"）。**書いた内容は一切送らない**（テストで文字列漏れゼロを機械検証）
+- 匿名ID（pt:anon-id）で1日1回まとめ送信（pt:stats-sent）。設定「つかいかたの統計」でオフ可（pt:stats=0、オフで未送信分も破棄）。localhost等では送らない（_ptStatsTestフックはテスト用）
+- Worker側: POST /techo/stat（検証つき・KVにtechostat:date:id、TTL400日）／GET /techo/stats?date=（X-Admin-Token必須の集計照会）。**secret TECHO_ADMIN_TOKEN の設定とwrangler deployが未実施**
+- プライバシーポリシー§4更新済み（項目列挙・オフ手段・保持期間）。App Privacyラベルは「使用状況データ・ユーザーに関連付けられない」になる
+
 ## 未実装（製品化するなら）
 
 - フォントの同梱（現状オンライン必須）

@@ -870,6 +870,11 @@
       <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
     </div>
     <p class="settings-note">大安・仏滅などをページと月のカレンダーに印刷します。</p>
+    <p class="settings-label" style="margin-top:16px;">つかいかたの統計</p>
+    <div class="week-chips">
+      <button id="statsToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">統計を送る</button>
+    </div>
+    <p class="settings-note">「めくった回数」「書いた日数」などの数だけを匿名で送り、アプリの改善に使います。書いた内容や予定が送られることはありません。</p>
     <p class="settings-label" style="margin-top:16px;">Googleカレンダー</p>
     <p id="gcalStatus" class="settings-note" style="margin-top:0;"></p>
     <button id="gcalConnectBtn" type="button" class="settings-close" style="margin-top:8px;">Googleカレンダーと連携</button>
@@ -1098,6 +1103,10 @@
         if (interactive) {
           ta.addEventListener('input', function () {
             localStorage.setItem(key, ta.value);
+            if (!ta._statCounted) {
+              ta._statCounted = true;
+              statBump(cls === 'plan' ? 'plan' : 'diary');
+            }
             flashSaved();
           });
         } else {
@@ -1351,6 +1360,7 @@
     currentView = targetView;
     var v = viewParts(targetView);
     if (v.type === 'day') currentISO = v.iso;
+    statBump('flip');
     updateChrome(targetView);
     function finishVisual() {
       under.style.display = 'block';
@@ -1618,6 +1628,7 @@
     flipTo(stepView(currentView, 1), 1);
   });
   document.getElementById('replayBtn').addEventListener('click', function () {
+    statBump('osarai');
     startReplay();
   });
   document.getElementById('prevBtn').addEventListener('click', function () {
@@ -1631,6 +1642,7 @@
   });
   // インデックスタブ: 月のカレンダーへ／日のページへ帰る
   document.getElementById('tabMonth').addEventListener('click', function () {
+    statBump('month');
     flipTo('month:' + currentISO.slice(0, 7), 1);
   });
   document.getElementById('tabDay').addEventListener('click', function () {
@@ -1704,6 +1716,56 @@
   applyPaperColor();
   applyWriteFont();
   renderPage(document.getElementById('currentPage'), currentView, true);
+  statBump('open');
+  statsFlush();
+
+  // ---- つかいかたの統計（匿名・数だけ） ----
+  // 送るのは回数と、選択中の紙/字のID、連携の有無だけ。書いた内容は一切送らない。
+  // 匿名ID（ランダム）で1日1回まとめて送信。設定でオフにできる（pt:stats=0）
+  function statsEnabled() {
+    return localStorage.getItem('pt:stats') !== '0';
+  }
+
+  function statBump(name) {
+    try {
+      if (!statsEnabled()) return;
+      var p = JSON.parse(localStorage.getItem('pt:stats-pending') || '{}');
+      p[name] = (p[name] || 0) + 1;
+      localStorage.setItem('pt:stats-pending', JSON.stringify(p));
+    } catch (e) { /* 統計は失敗しても本体に影響させない */ }
+  }
+
+  function statsFlush() {
+    try {
+      if (!statsEnabled()) return;
+      // 開発中（localhost等）は送らない
+      if (location.hostname !== 'michael-anderson-official.github.io' && !isNativeApp() && !window._ptStatsTest) return;
+      var today = toISO(new Date());
+      if (localStorage.getItem('pt:stats-sent') === today) return;
+      var id = localStorage.getItem('pt:anon-id');
+      if (!id) {
+        id = randomBase64Url(12);
+        localStorage.setItem('pt:anon-id', id);
+      }
+      var pending = JSON.parse(localStorage.getItem('pt:stats-pending') || '{}');
+      var payload = {
+        id: id,
+        d: today,
+        m: pending,
+        v: getPaperColor() + '/' + getWriteFont() + '/' + (gcalConnected() ? '1' : '0')
+      };
+      fetch(WORKER_URL + '/techo/stat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (res) {
+        if (res.ok) {
+          localStorage.setItem('pt:stats-sent', today);
+          localStorage.removeItem('pt:stats-pending');
+        }
+      }).catch(function () { /* 圏外などは次回に持ち越し */ });
+    } catch (e) { /* 統計は失敗しても本体に影響させない */ }
+  }
 
   // ---- Googleカレンダー連携 ----
   // 一週間の計画帳と同じWorker基盤を流用（認可コード→Workerがrefresh tokenをKVに保管、
@@ -2108,6 +2170,20 @@
       });
     }
 
+    // つかいかたの統計トグル
+    var statsToggle = document.getElementById('statsToggle');
+    function updateStatsToggle() {
+      statsToggle.classList.toggle('active', statsEnabled());
+    }
+    statsToggle.addEventListener('click', function () {
+      localStorage.setItem('pt:stats', statsEnabled() ? '0' : '1');
+      if (!statsEnabled()) {
+        localStorage.removeItem('pt:stats-pending'); // オフにしたら未送信分も破棄
+      }
+      updateStatsToggle();
+      flashSaved();
+    });
+
     // 六曜の表示トグル
     var rokuyoToggle = document.getElementById('rokuyoToggle');
     function updateRokuyoToggle() {
@@ -2126,6 +2202,7 @@
       renderPaperChips();
       renderFontChips();
       updateRokuyoToggle();
+      updateStatsToggle();
       updateGcalUI();
       modal.style.display = 'flex';
     });
