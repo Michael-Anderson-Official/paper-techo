@@ -358,11 +358,125 @@
     }
   }
 
+  /* 右上のメニュー */
+  .menu-btn {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    right: 10px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(243, 236, 217, 0.92), rgba(231, 223, 200, 0.92));
+    color: #4a4030;
+    font-size: 18px;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(60, 45, 25, 0.25);
+  }
+  .menu-panel {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 54px);
+    right: 10px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    min-width: 130px;
+    background: #f8f3e6;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(40, 30, 15, 0.35);
+    overflow: hidden;
+  }
+  .menu-panel button {
+    font-family: inherit;
+    font-size: 15px;
+    color: #4a4030;
+    background: transparent;
+    border: 0;
+    padding: 12px 16px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu-panel button:active { background: rgba(120, 100, 60, 0.12); }
+
+  /* 設定（紙のカード） */
+  .settings-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(35, 28, 20, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .settings-card {
+    width: 100%;
+    max-width: 340px;
+    background: #f8f3e6;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(30, 22, 10, 0.5);
+    padding: 18px 18px 16px;
+    color: #454a58;
+  }
+  .settings-card h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .settings-label {
+    font-size: 14px;
+    color: #6b6046;
+    margin-bottom: 8px;
+  }
+  .week-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .week-chips button {
+    width: 40px;
+    height: 40px;
+    font-family: inherit;
+    font-size: 15px;
+    color: #4a4e5c;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(120, 100, 60, 0.3);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .week-chips button.active {
+    background: #5a7d5a;
+    border-color: #4d6b4d;
+    color: #fff;
+    font-weight: 600;
+  }
+  .settings-note {
+    font-size: 12px;
+    color: #8a8d99;
+    margin-top: 10px;
+  }
+  .settings-close {
+    margin-top: 14px;
+    width: 100%;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 15px;
+    color: #4a4030;
+    background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
     top: calc(env(safe-area-inset-top, 0px) + 8px);
-    right: 12px;
+    right: 58px;
     font-size: 12px;
     color: rgba(240, 230, 200, 0.55);
     opacity: 0;
@@ -394,6 +508,21 @@
   <button id="eraserBtn" type="button" aria-label="消しゴム" style="display:none;">消しゴム</button>
 </div>
 <div class="save-note" id="saveNote">とじました</div>
+
+<!-- 右上のメニュー（☰）と設定 -->
+<button id="menuBtn" type="button" class="menu-btn" aria-label="メニュー">☰</button>
+<div id="menuPanel" class="menu-panel" style="display:none;">
+  <button id="menuSettings" type="button">⚙ 設定</button>
+</div>
+<div id="settingsModal" class="settings-modal" style="display:none;">
+  <div class="settings-card">
+    <h2>設定</h2>
+    <p class="settings-label">週の始まり</p>
+    <div id="weekStartChips" class="week-chips"></div>
+    <p class="settings-note">月のカレンダーの並びが変わります。</p>
+    <button id="settingsClose" type="button" class="settings-close">とじる</button>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -450,6 +579,12 @@
 
   function hasEntry(iso) {
     return !!((localStorage.getItem(keyText(iso)) || '').trim() || localStorage.getItem(keyInk(iso)));
+  }
+
+  // 週の始まり（0=日〜6=土）。月のカレンダーの列順に効く
+  function getWeekStart() {
+    var v = parseInt(localStorage.getItem('pt:weekStart'), 10);
+    return (v >= 0 && v <= 6) ? v : 0;
   }
 
   // ---- ストレージ ----
@@ -528,13 +663,15 @@
   function buildMonthGrid(y, m, interactive) {
     var grid = document.createElement('div');
     grid.className = 'month-grid';
-    DOW.forEach(function (name, i) {
+    var ws = getWeekStart();
+    for (var col = 0; col < 7; col++) {
+      var dow = (ws + col) % 7;
       var h = document.createElement('div');
-      h.className = 'mg-head' + (i === 0 ? ' dow-sun' : (i === 6 ? ' dow-sat' : ''));
-      h.textContent = name;
+      h.className = 'mg-head' + (dow === 0 ? ' dow-sun' : (dow === 6 ? ' dow-sat' : ''));
+      h.textContent = DOW[dow];
       grid.appendChild(h);
-    });
-    var startDow = new Date(y, m - 1, 1).getDay();
+    }
+    var startDow = (new Date(y, m - 1, 1).getDay() - ws + 7) % 7;
     var days = new Date(y, m, 0).getDate();
     var todayISO = toISO(new Date());
     for (var pad = 0; pad < startDow; pad++) {
@@ -882,6 +1019,58 @@
 
   // ---- 起動 ----
   renderPage(document.getElementById('currentPage'), currentView, true);
+
+  // ---- メニューと設定 ----
+  (function () {
+    var menuBtn = document.getElementById('menuBtn');
+    var menuPanel = document.getElementById('menuPanel');
+    var modal = document.getElementById('settingsModal');
+    var chips = document.getElementById('weekStartChips');
+
+    menuBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      menuPanel.style.display = menuPanel.style.display === 'none' ? 'flex' : 'none';
+    });
+    // メニューの外をタップしたら閉じる
+    document.addEventListener('pointerdown', function (ev) {
+      if (menuPanel.style.display !== 'none' && !menuPanel.contains(ev.target) && ev.target !== menuBtn) {
+        menuPanel.style.display = 'none';
+      }
+    });
+
+    function renderChips() {
+      chips.innerHTML = '';
+      var ws = getWeekStart();
+      DOW.forEach(function (name, i) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = name;
+        b.className = i === ws ? 'active' : '';
+        b.addEventListener('click', function () {
+          localStorage.setItem('pt:weekStart', String(i));
+          renderChips();
+          // 月のカレンダーを開いていたら並びを描き直す
+          if (viewParts(currentView).type === 'month') {
+            renderPage(document.getElementById('currentPage'), currentView, true);
+          }
+          flashSaved();
+        });
+        chips.appendChild(b);
+      });
+    }
+
+    document.getElementById('menuSettings').addEventListener('click', function () {
+      menuPanel.style.display = 'none';
+      renderChips();
+      modal.style.display = 'flex';
+    });
+    document.getElementById('settingsClose').addEventListener('click', function () {
+      modal.style.display = 'none';
+    });
+    modal.addEventListener('click', function (ev) {
+      if (ev.target === modal) modal.style.display = 'none';
+    });
+  })();
 
   // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
