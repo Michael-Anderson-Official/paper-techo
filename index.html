@@ -241,8 +241,8 @@
     background: transparent;
     resize: none;
     outline: none;
-    /* 自分が書く欄だけ、より荒い手書きフォント（印刷部分はKlee Oneのまま） */
-    font-family: 'Yomogi', 'Klee One', cursive;
+    /* 自分が書く欄だけ手書きフォント（設定で選べる。印刷部分はKlee Oneのまま） */
+    font-family: var(--write-font, 'Yomogi'), 'Klee One', cursive;
     font-size: 19px;
     line-height: 28px;
     color: var(--ink-text);
@@ -724,6 +724,10 @@
     cursor: pointer;
   }
 
+  .paper-chip.locked {
+    opacity: 0.55;
+  }
+
   /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い） */
   body[data-paper="board"] .book,
   body[data-paper="board"] .toolbar {
@@ -783,6 +787,9 @@
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
     <p class="settings-label" style="margin-top:16px;">紙の色</p>
     <div id="paperChips" class="week-chips"></div>
+    <p class="settings-label" style="margin-top:16px;">書くときの字</p>
+    <div id="fontChips" class="week-chips"></div>
+    <p id="fontNote" class="settings-note">🔒の字は、プレミアム（準備中）で選べるようになります。</p>
     <p class="settings-label" style="margin-top:16px;">暦の表示</p>
     <div class="week-chips">
       <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
@@ -940,6 +947,32 @@
 
   function inkStrokeRGB() {
     return paperDef()[4];
+  }
+
+  // 書く欄のフォント。無料2種＋プレミアム（🔒・準備中。課金実装時にフォント本体を同梱する）
+  var WRITE_FONTS = [
+    ['yomogi', 'えんぴつ', "'Yomogi'", false],
+    ['klee', 'きれい', "'Klee One'", false],
+    ['pen', 'ボールペン', "'Zen Kurenaido'", true],
+    ['magic', 'マジック', "'Yusei Magic'", true],
+    ['maru', 'まるもじ', "'Hachi Maru Pop'", true],
+    ['fude', 'ふで', "'Yuji Boku'", true]
+  ];
+
+  function isPremiumUser() {
+    return false; // 課金実装までのスタブ（study-plan-appと同じ流儀）
+  }
+
+  function getWriteFont() {
+    var v = localStorage.getItem('pt:font');
+    var hit = WRITE_FONTS.filter(function (f) { return f[0] === v && (!f[3] || isPremiumUser()); })[0];
+    return hit ? hit[0] : 'yomogi';
+  }
+
+  function applyWriteFont() {
+    var id = getWriteFont();
+    var def = WRITE_FONTS.filter(function (f) { return f[0] === id; })[0];
+    document.body.style.setProperty('--write-font', def[2]);
   }
 
   function applyPaperColor() {
@@ -1618,6 +1651,7 @@
 
   // ---- 起動 ----
   applyPaperColor();
+  applyWriteFont();
   renderPage(document.getElementById('currentPage'), currentView, true);
 
   // ---- Googleカレンダー連携 ----
@@ -1994,6 +2028,33 @@
       });
     }
 
+    // 書くときの字えらび（無料はその字で見本表示、プレミアムは🔒）
+    var fontChips = document.getElementById('fontChips');
+    function renderFontChips() {
+      fontChips.innerHTML = '';
+      var cur = getWriteFont();
+      WRITE_FONTS.forEach(function (f) {
+        var locked = f[3] && !isPremiumUser();
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'paper-chip' + (f[0] === cur ? ' active' : '') + (locked ? ' locked' : '');
+        b.textContent = (locked ? '🔒 ' : '') + f[1];
+        if (!locked) b.style.fontFamily = f[2] + ", 'Klee One', cursive";
+        b.addEventListener('click', function () {
+          if (locked) {
+            var note = document.getElementById('fontNote');
+            if (note) note.textContent = '「' + f[1] + '」はプレミアム（準備中）で選べるようになります。';
+            return;
+          }
+          localStorage.setItem('pt:font', f[0]);
+          applyWriteFont();
+          renderFontChips();
+          flashSaved();
+        });
+        fontChips.appendChild(b);
+      });
+    }
+
     // 六曜の表示トグル
     var rokuyoToggle = document.getElementById('rokuyoToggle');
     function updateRokuyoToggle() {
@@ -2010,6 +2071,7 @@
       menuPanel.style.display = 'none';
       renderChips();
       renderPaperChips();
+      renderFontChips();
       updateRokuyoToggle();
       updateGcalUI();
       modal.style.display = 'flex';
