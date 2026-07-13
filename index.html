@@ -193,18 +193,12 @@
     overflow: hidden;
   }
 
-  /* 月のカレンダーのページは赤いマージン線なし（ノイズ＋罫線のみ） */
+  /* 月のカレンダーのページは無地（罫線・赤線なし）。
+     カレンダー自身の行線と日記用罫線のリズムが揃わずズレて見えるため、月間は格子だけにする */
   .paper.is-month {
     background-image:
-      url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
-      repeating-linear-gradient(
-        to bottom,
-        transparent 0px,
-        transparent 27px,
-        var(--rule) 27px,
-        var(--rule) 28px
-      );
-    background-position: 0 0, 0 88px;
+      url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-position: 0 0;
   }
 
   /* 綴じ（左端のステッチ） */
@@ -592,7 +586,7 @@
       background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px)), 0 0;
     }
     .paper.is-month {
-      background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px));
+      background-position: 0 0;
     }
     .leaf .face.back { border-radius: 0; }
     .page-date {
@@ -795,16 +789,9 @@
   }
   body[data-paper="led"] .paper.is-month {
     background-image:
-      radial-gradient(circle at 1.5px 1.5px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px),
-      repeating-linear-gradient(
-        to bottom,
-        transparent 0px,
-        transparent 27px,
-        var(--rule) 27px,
-        var(--rule) 28px
-      );
-    background-size: 3px 3px, auto;
-    background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px));
+      radial-gradient(circle at 1.5px 1.5px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px);
+    background-size: 3px 3px;
+    background-position: 0 0;
   }
   body[data-paper="led"] .book,
   body[data-paper="led"] .toolbar,
