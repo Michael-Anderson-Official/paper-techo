@@ -11,10 +11,9 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<!-- 手書き風フォント（プロトタイプはWebフォント。製品化時はアプリ内バンドルに切り替える） -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Yomogi&display=swap" rel="stylesheet">
+<!-- 手書き風フォント（Klee One を自前ホスト。fonts/OFL.txt がライセンス）。
+     unicode-range分割なので実際に読む文字のサブセットだけがダウンロードされる -->
+<link href="fonts/fonts.css" rel="stylesheet">
 <!-- Googleカレンダー連携（GIS）。読み込みは非同期、使うのは連携ボタンを押したときだけ -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
