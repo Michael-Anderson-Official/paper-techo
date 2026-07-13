@@ -856,17 +856,6 @@
   }
   #mdpDate .dow-sun { color: var(--sun); }
   #mdpDate .dow-sat { color: var(--sat); }
-  #mdpOpenBtn {
-    flex: none;
-    font-family: inherit;
-    font-size: 13px;
-    color: #4a4030;
-    background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
-    border: 1px solid rgba(120, 100, 60, 0.35);
-    border-radius: 8px;
-    padding: 6px 10px;
-    cursor: pointer;
-  }
   .mdp-events {
     font-size: 14px;
     line-height: 1.7;
@@ -928,7 +917,6 @@
 <div id="monthDayPanel" class="month-day-panel" style="display:none;">
   <div class="mdp-head">
     <span id="mdpDate"></span>
-    <button id="mdpOpenBtn" type="button">ページをひらく ▶</button>
   </div>
   <div id="mdpEvents" class="mdp-events"></div>
 </div>
@@ -1818,17 +1806,15 @@
     var t = toISO(new Date());
     flipTo('day:' + t, t > v.iso ? 1 : -1);
   });
-  document.getElementById('mdpOpenBtn').addEventListener('click', function () {
-    if (monthSel) flipTo('day:' + monthSel, 1);
-  });
-
   // インデックスタブ: 月のカレンダーへ／日のページへ帰る
   document.getElementById('tabMonth').addEventListener('click', function () {
     statBump('month');
     flipTo('month:' + currentISO.slice(0, 7), 1);
   });
   document.getElementById('tabDay').addEventListener('click', function () {
-    flipTo('day:' + currentISO, -1);
+    // 月ビューで日を選んでいれば、その日を開く（選んでいなければ元いた日へ）
+    var target = monthSel || currentISO;
+    flipTo('day:' + target, target > currentISO ? 1 : -1);
   });
 
   // 指の動きに追従するめくり。
