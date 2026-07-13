@@ -78,6 +78,32 @@
     --corner: rgba(255, 255, 255, 0.12);
     --shade-rgb: 0, 0, 0;
   }
+  /* 電光掲示板（駅の発車標。アンバーLED＋緑LED） */
+  body[data-paper="led"] {
+    --paper: #0e1013;
+    --paper-back-1: #0a0c0e;
+    --paper-back-2: #14161a;
+    --paper-back-3: #07080a;
+    --ink-strong: #ffb02e;
+    --ink-text: #ffa41f;
+    --ink-soft: #9a7b45;
+    --placeholder: rgba(255, 164, 31, 0.3);
+    --rule: rgba(255, 176, 46, 0.12);
+    --rule-strong: rgba(255, 176, 46, 0.3);
+    --margin-line: rgba(255, 176, 46, 0.25);
+    --print: #58e07a;        /* 予定は緑LED */
+    --print-soft: #3da65a;
+    --sun: #ff6259;
+    --sat: #57c8ff;
+    --today-ring: rgba(255, 176, 46, 0.85);
+    --stitch: rgba(255, 255, 255, 0.14);
+    --divider-label: #c88f3a;
+    --mark: rgba(255, 164, 31, 0.55);
+    --mg-border: rgba(255, 176, 46, 0.14);
+    --corner: rgba(255, 176, 46, 0.14);
+    --shade-rgb: 0, 0, 0;
+  }
+
   /* 黒板（チョークで書く） */
   body[data-paper="board"] {
     --paper: #33584a;
@@ -745,6 +771,44 @@
     text-shadow: 0 0 2px rgba(240, 238, 228, 0.28);
   }
 
+  /* 電光掲示板: 消灯LEDの格子が見える盤面。文字はドットフォント＋発光のにじみ */
+  body[data-paper="led"] .paper {
+    background-image:
+      radial-gradient(circle at 1.5px 1.5px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 27px,
+        var(--rule) 27px,
+        var(--rule) 28px
+      ),
+      linear-gradient(to right, transparent 46px, var(--margin-line) 46px, var(--margin-line) 47.5px, transparent 47.5px);
+    background-size: 3px 3px, auto, auto;
+    background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px)), 0 0;
+  }
+  body[data-paper="led"] .paper.is-month {
+    background-image:
+      radial-gradient(circle at 1.5px 1.5px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 27px,
+        var(--rule) 27px,
+        var(--rule) 28px
+      );
+    background-size: 3px 3px, auto;
+    background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px));
+  }
+  body[data-paper="led"] .book,
+  body[data-paper="led"] .toolbar,
+  body[data-paper="led"] .page-text,
+  body[data-paper="led"] .page-event {
+    font-family: 'DotGothic16', monospace;
+  }
+  body[data-paper="led"] .book {
+    text-shadow: 0 0 6px; /* 色指定なし=文字色で光る（LEDのにじみ） */
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -939,7 +1003,8 @@
     ['ivory', 'アイボリー', '#fdf8ea', '#4a4e5c', '58, 60, 72', false],
     ['white', '白', '#fcfcfb', '#4a4e5c', '58, 60, 72', false],
     ['black', '黒', '#23252a', '#e8e6df', '232, 230, 222', false],
-    ['board', '黒板', '#33584a', '#f0ede2', '240, 238, 228', true]
+    ['board', '黒板', '#33584a', '#f0ede2', '240, 238, 228', true],
+    ['led', '電光掲示板', '#0e1013', '#ffb02e', '255, 164, 31', true]
   ];
 
   function getPaperColor() {
