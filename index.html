@@ -545,18 +545,19 @@
   /* 下の道具置き（ツールバー）。紙のタグ風ボタン */
   .toolbar {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     margin-top: 14px;
     align-items: center;
   }
   .toolbar button {
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13.5px;
     color: #4a4030;
     background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
     border: 1px solid rgba(120, 100, 60, 0.35);
     border-radius: 6px;
-    padding: 7px 12px;
+    padding: 7px 9px;
+    white-space: nowrap;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
     cursor: pointer;
   }
@@ -823,6 +824,62 @@
     background: linear-gradient(180deg, #d9e6d3, #c8dabf);
   }
 
+  /* なぞり書きパネル */
+  .line-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: rgba(46, 40, 32, 0.92);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .line-cell {
+    width: min(44vw, 210px);
+    height: min(44vw, 210px);
+    flex: none;
+    background:
+      linear-gradient(to right, transparent calc(50% - 0.5px), rgba(120, 140, 170, 0.25) calc(50% - 0.5px), rgba(120, 140, 170, 0.25) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+      linear-gradient(to bottom, transparent calc(50% - 0.5px), rgba(120, 140, 170, 0.25) calc(50% - 0.5px), rgba(120, 140, 170, 0.25) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+      var(--paper);
+    border-radius: 10px;
+    touch-action: none;
+  }
+  .line-panel-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+  }
+  .line-panel-btns button {
+    flex: 1 1 auto;
+    font-family: inherit;
+    font-size: 15px;
+    color: #4a4030;
+    background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  /* 転写先カーソル（点滅） */
+  .line-cursor {
+    position: absolute;
+    width: 2px;
+    height: 24px;
+    background: rgba(200, 90, 80, 0.85);
+    pointer-events: none;
+    z-index: 25;
+    animation: lineCursorBlink 1s step-end infinite;
+  }
+  @keyframes lineCursorBlink {
+    50% { opacity: 0.15; }
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -861,6 +918,18 @@
   <button id="penBtn" type="button" aria-label="えんぴつ">✏️</button>
   <button id="eraserBtn" type="button" aria-label="消しゴム" style="display:none;">消しゴム</button>
 </div>
+<!-- なぞり書きパネル: 大きなマスに書くと、選んだ行に縮小して転写される -->
+<div id="linePanel" class="line-panel" style="display:none;">
+  <canvas id="lineCell" class="line-cell"></canvas>
+  <div class="line-panel-btns">
+    <button id="lineUndoBtn" type="button">← けす</button>
+    <button id="lineSpaceBtn" type="button">空白</button>
+    <button id="lineBreakBtn" type="button">改行</button>
+    <button id="lineCloseBtn" type="button">とじる</button>
+  </div>
+</div>
+<div id="lineCursor" class="line-cursor" style="display:none;"></div>
+
 <div class="save-note" id="saveNote">とじました</div>
 
 <!-- 右上のメニュー（☰）と設定 -->
@@ -1395,8 +1464,10 @@
     return { ctx: ctx, ink: ink, rect: rect };
   }
 
-  function attachPencil(canvas, iso) {
-    var state = null; // {ctx, ink, rect}
+  // ページの生きているインク状態（なぞり書きパネルと共有する）
+  var activeInkState = null;
+
+  function attachPencil(canvas, iso, state) {
     var drawing = false;
     var last = null;
     var currentStroke = null;
@@ -1408,7 +1479,6 @@
 
     canvas.addEventListener('pointerdown', function (ev) {
       if (!penMode) return;
-      if (!state) state = setupInk(canvas, iso);
       drawing = true;
       last = pos(ev);
       currentStroke = { e: eraserMode ? 1 : 0, p: [Math.round(last.x * 10), Math.round(last.y * 10), 0] };
@@ -1427,7 +1497,7 @@
       last = p;
     });
 
-    function up() {
+    function up(ev) {
       if (!drawing) return;
       drawing = false;
       if (currentStroke && currentStroke.p.length > 3) {
@@ -1437,12 +1507,246 @@
           state.ink.ch = Math.round(state.rect.height);
         }
         saveInk(iso, state.ink, state.rect);
+      } else if (currentStroke && !eraserMode && ev && ev.clientX != null) {
+        // ほぼ動かないタップ → その行への「なぞり書き」を開始
+        var r = canvas.getBoundingClientRect();
+        openLinePanel(ev.clientX - r.left, ev.clientY - r.top);
       }
       currentStroke = null;
     }
     canvas.addEventListener('pointerup', up);
-    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('pointercancel', function () { drawing = false; currentStroke = null; });
   }
+
+  // ---- なぞり書き（拡大マスに書いて行へ転写） ----
+  // スマホの画面では行に直接小さな字は書けないので、大きなマスに書いて縮小転写する。
+  // 転写された線は通常のインク（ベクター）としてそのページに保存される
+  var linePanelState = null; // { lineTop, cursorX, cellStrokes, groups, commitTimer }
+
+  function lineRulesTop(root) {
+    var pd = root.querySelector('.page-date');
+    var safe = pd ? Math.max(0, pd.offsetTop - 22) : 0;
+    return 88 + safe;
+  }
+
+  function openLinePanel(x, y) {
+    if (!activeInkState) return;
+    var root = activeInkState.root;
+    var rulesTop = lineRulesTop(root);
+    var k = Math.floor((y - rulesTop) / 28);
+    if (k < 0) k = 0;
+    var lineTop = rulesTop + k * 28;
+    if (lineTop + 28 > activeInkState.rect.height) return;
+    if (!linePanelState) {
+      document.getElementById('linePanel').style.display = 'flex';
+      setupLineCell();
+    }
+    linePanelState = linePanelState || {};
+    linePanelState.lineTop = lineTop;
+    linePanelState.cursorX = Math.max(14, Math.round(x));
+    linePanelState.cellStrokes = linePanelState.cellStrokes || [];
+    linePanelState.groups = linePanelState.groups || [];
+    clearLineCell();
+    updateLineCursor();
+  }
+
+  function closeLinePanel() {
+    if (!linePanelState) return;
+    clearTimeout(linePanelState.commitTimer);
+    linePanelState = null;
+    var p = document.getElementById('linePanel');
+    if (p) p.style.display = 'none';
+    var c = document.getElementById('lineCursor');
+    if (c) c.style.display = 'none';
+  }
+
+  function updateLineCursor() {
+    var cur = document.getElementById('lineCursor');
+    if (!cur || !linePanelState || !activeInkState) return;
+    var root = activeInkState.root;
+    cur.style.display = 'block';
+    if (cur.parentNode !== root) root.appendChild(cur);
+    cur.style.left = linePanelState.cursorX + 'px';
+    cur.style.top = (linePanelState.lineTop + 2) + 'px';
+  }
+
+  var lineCellCtx = null;
+
+  function setupLineCell() {
+    var cell = document.getElementById('lineCell');
+    var rect = cell.getBoundingClientRect();
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    cell.width = Math.round(rect.width * dpr);
+    cell.height = Math.round(rect.height * dpr);
+    lineCellCtx = cell.getContext('2d');
+    lineCellCtx.scale(dpr, dpr);
+  }
+
+  function clearLineCell() {
+    var cell = document.getElementById('lineCell');
+    if (!lineCellCtx) return;
+    lineCellCtx.save();
+    lineCellCtx.setTransform(1, 0, 0, 1, 0, 0);
+    lineCellCtx.clearRect(0, 0, cell.width, cell.height);
+    lineCellCtx.restore();
+    if (linePanelState) linePanelState.cellStrokes = [];
+  }
+
+  // マスの中身を行へ転写して、カーソルを進める
+  function commitLineChar() {
+    if (!linePanelState || !activeInkState) return;
+    var strokes = linePanelState.cellStrokes;
+    if (!strokes.length) return;
+    var cell = document.getElementById('lineCell');
+    var cellH = cell.getBoundingClientRect().height;
+    // 文字のbboxを求める
+    var minX = Infinity, maxX = -Infinity;
+    strokes.forEach(function (s) {
+      for (var i = 0; i < s.p.length; i += 3) {
+        var px = s.p[i] / 10;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+      }
+    });
+    var scale = 24 / cellH; // マス全高 → 行の高さ24px
+    var offX = linePanelState.cursorX - minX * scale;
+    var offY = linePanelState.lineTop + 2;
+    var converted = [];
+    strokes.forEach(function (s) {
+      var np = [];
+      for (var i = 0; i < s.p.length; i += 3) {
+        np.push(
+          Math.round((s.p[i] / 10 * scale + offX) * 10),
+          Math.round((s.p[i + 1] / 10 * scale + offY) * 10),
+          s.p[i + 2]
+        );
+      }
+      converted.push({ e: 0, p: np });
+    });
+    // 保存して、その分だけ本canvasへ描く
+    var st = activeInkState;
+    converted.forEach(function (s) { st.ink.strokes.push(s); });
+    if (!st.ink.cw) {
+      st.ink.cw = Math.round(st.rect.width);
+      st.ink.ch = Math.round(st.rect.height);
+    }
+    saveInk(st.iso, st.ink, st.rect);
+    var sx = st.ink.cw ? st.rect.width / st.ink.cw : 1;
+    var sy = st.ink.ch ? st.rect.height / st.ink.ch : 1;
+    var sc = (sx + sy) / 2;
+    converted.forEach(function (s) {
+      var p = s.p;
+      for (var i = 3; i + 2 < p.length; i += 3) {
+        drawSegment(st.ctx,
+          (p[i - 3] / 10) * sx, (p[i - 2] / 10) * sy,
+          (p[i] / 10) * sx, (p[i + 1] / 10) * sy,
+          p[i + 2], false, sc);
+      }
+    });
+    linePanelState.groups.push(converted.length);
+    // カーソルを進める（あふれたら次の行）
+    var w = (maxX - minX) * scale;
+    linePanelState.cursorX += Math.max(Math.round(w) + 3, 12);
+    if (linePanelState.cursorX > st.rect.width - 20) {
+      lineBreak();
+    }
+    clearLineCell();
+    updateLineCursor();
+  }
+
+  function lineBreak() {
+    if (!linePanelState || !activeInkState) return;
+    linePanelState.lineTop += 28;
+    linePanelState.cursorX = 56;
+    if (linePanelState.lineTop + 28 > activeInkState.rect.height) {
+      closeLinePanel();
+      return;
+    }
+    updateLineCursor();
+  }
+
+  function lineUndo() {
+    if (!linePanelState || !activeInkState) return;
+    clearTimeout(linePanelState.commitTimer);
+    if (linePanelState.cellStrokes.length) {
+      // まだ転写前ならマスを消すだけ
+      clearLineCell();
+      return;
+    }
+    var n = linePanelState.groups.pop();
+    if (!n) return;
+    var st = activeInkState;
+    st.ink.strokes.splice(st.ink.strokes.length - n, n);
+    saveInk(st.iso, st.ink, st.rect);
+    // 消しゴム同様、全体を描き直す
+    var fresh = setupInk(st.canvas, st.iso);
+    st.ctx = fresh.ctx;
+    st.ink = fresh.ink;
+    st.rect = fresh.rect;
+  }
+
+  // マスへの書き込み（鉛筆と同じ描き味）
+  (function () {
+    var cell = document.getElementById('lineCell');
+    var drawing = false;
+    var last = null;
+    var stroke = null;
+    function pos(ev) {
+      var r = cell.getBoundingClientRect();
+      return { x: ev.clientX - r.left, y: ev.clientY - r.top, t: ev.timeStamp };
+    }
+    cell.addEventListener('pointerdown', function (ev) {
+      if (!linePanelState) return;
+      clearTimeout(linePanelState.commitTimer);
+      drawing = true;
+      last = pos(ev);
+      stroke = { e: 0, p: [Math.round(last.x * 10), Math.round(last.y * 10), 0] };
+      try { cell.setPointerCapture(ev.pointerId); } catch (e) { /* 合成イベント */ }
+      ev.preventDefault();
+    });
+    cell.addEventListener('pointermove', function (ev) {
+      if (!drawing || !lineCellCtx) return;
+      var p = pos(ev);
+      var dist = Math.hypot(p.x - last.x, p.y - last.y);
+      if (dist < 0.8) return;
+      var dt = Math.min(255, Math.max(1, Math.round(p.t - last.t)));
+      drawSegment(lineCellCtx, last.x, last.y, p.x, p.y, dt, false, 2.2);
+      stroke.p.push(Math.round(p.x * 10), Math.round(p.y * 10), dt);
+      last = p;
+    });
+    function up() {
+      if (!drawing) return;
+      drawing = false;
+      if (stroke && stroke.p.length > 3 && linePanelState) {
+        linePanelState.cellStrokes.push(stroke);
+        clearTimeout(linePanelState.commitTimer);
+        linePanelState.commitTimer = setTimeout(commitLineChar, 700);
+      }
+      stroke = null;
+    }
+    cell.addEventListener('pointerup', up);
+    cell.addEventListener('pointercancel', up);
+
+    document.getElementById('lineUndoBtn').addEventListener('click', lineUndo);
+    document.getElementById('lineSpaceBtn').addEventListener('click', function () {
+      if (!linePanelState) return;
+      clearTimeout(linePanelState.commitTimer);
+      commitLineChar(); // 書きかけがあれば先に確定
+      linePanelState.cursorX += 16;
+      updateLineCursor();
+    });
+    document.getElementById('lineBreakBtn').addEventListener('click', function () {
+      if (!linePanelState) return;
+      clearTimeout(linePanelState.commitTimer);
+      commitLineChar();
+      lineBreak();
+    });
+    document.getElementById('lineCloseBtn').addEventListener('click', function () {
+      clearTimeout(linePanelState && linePanelState.commitTimer);
+      if (linePanelState && linePanelState.cellStrokes.length) commitLineChar();
+      closeLinePanel();
+    });
+  })();
 
   // ---- ページの描画 ----
   // silentChrome: めくり先を事前に描くとき、タブなどの見た目はまだ切り替えない
@@ -1454,8 +1758,12 @@
     if (built.canvas) {
       // レイアウト確定後にインクを読み込む（日ページのみ）
       requestAnimationFrame(function () {
-        setupInk(built.canvas, built.iso);
-        if (interactive) attachPencil(built.canvas, built.iso);
+        var st = setupInk(built.canvas, built.iso);
+        if (interactive) {
+          activeInkState = { canvas: built.canvas, iso: built.iso, ctx: st.ctx, ink: st.ink, rect: st.rect, root: el };
+          attachPencil(built.canvas, built.iso, activeInkState);
+          closeLinePanel(); // ページが変わったらパネルは閉じる
+        }
       });
     }
     if (built.iso) loadDayEvents(el, built.iso); // カレンダーの予定（キャッシュ即表示＋裏で更新）
@@ -1909,7 +2217,7 @@
   var eraserBtn = document.getElementById('eraserBtn');
   penBtn.addEventListener('click', function () {
     penMode = !penMode;
-    if (!penMode) eraserMode = false;
+    if (!penMode) { eraserMode = false; closeLinePanel(); }
     document.getElementById('book').classList.toggle('pen-mode', penMode);
     penBtn.classList.toggle('active', penMode);
     eraserBtn.style.display = penMode ? '' : 'none';
