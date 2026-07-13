@@ -1474,6 +1474,20 @@
   // ---- ページ再生（書いた内容が1文字ずつ現れる演出） ----
   // 予定→計画→日記の順に文字が現れ、最後に手書きの線が「実際に書いた速さ」で走る
   // （筆跡のdt=点の間隔msを保存してあるので、それを再生する。長い休みは28msに丸める）
+  // 要素内のテキストノードを順番に集める（色付きspanが混ざる日付や予定を
+  // 「見た目の順で1文字ずつ」出すために、ノード単位で空にして戻す）
+  function textNodesOf(el) {
+    var out = [];
+    (function walk(n) {
+      for (var i = 0; i < n.childNodes.length; i++) {
+        var c = n.childNodes[i];
+        if (c.nodeType === 3 && c.nodeValue) out.push({ node: c, full: c.nodeValue });
+        else if (c.nodeType === 1) walk(c);
+      }
+    })(el);
+    return out;
+  }
+
   var replayState = null; // { finish }
 
   function isReplaying() { return !!replayState; }
@@ -1497,10 +1511,15 @@
     var fullDiary = diary.value;
     if (!fullPlan && !fullDiary && evLines.length === 0) return; // 白紙は再生しない
 
+    // 日付ヘッダーと予定のテキストノード（色付きspan込み・見た目の順）
+    var headNodes = textNodesOf(root.querySelector('.page-date'));
+    var evNodeGroups = evLines.map(function (el) { return textNodesOf(el); });
+
     // まっさらにする
     plan.value = '';
     diary.value = '';
-    evLines.forEach(function (el) { el.style.visibility = 'hidden'; });
+    headNodes.forEach(function (t) { t.node.nodeValue = ''; });
+    evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = ''; }); });
 
     var timers = [];
     var finished = false;
@@ -1510,7 +1529,8 @@
       timers.forEach(clearTimeout);
       plan.value = fullPlan;
       diary.value = fullDiary;
-      evLines.forEach(function (el) { el.style.visibility = ''; });
+      headNodes.forEach(function (t) { t.node.nodeValue = t.full; });
+      evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = t.full; }); });
       book.classList.remove('replaying');
       btn.classList.remove('playing');
       btn.textContent = '▶';
@@ -1524,14 +1544,34 @@
     function at(t, fn) { timers.push(setTimeout(fn, t)); }
 
     // 文字の速さ: 全体が長くても間延びしないように調整
-    var totalChars = fullPlan.length + fullDiary.length;
-    var typeDelay = Math.max(30, Math.min(85, Math.round(5200 / Math.max(1, totalChars))));
+    var headChars = headNodes.reduce(function (s, t) { return s + t.full.length; }, 0);
+    var evChars = evNodeGroups.reduce(function (s, g) {
+      return s + g.reduce(function (s2, t) { return s2 + t.full.length; }, 0);
+    }, 0);
+    var totalChars = headChars + evChars + fullPlan.length + fullDiary.length;
+    var typeDelay = Math.max(28, Math.min(80, Math.round(5600 / Math.max(1, totalChars))));
+
+    // テキストノード列を1文字ずつ出すスケジューラ
+    function typeNodes(nodes, delay) {
+      nodes.forEach(function (item) {
+        var full = item.full;
+        for (var i = 1; i <= full.length; i++) {
+          (function (i) {
+            at(t, function () { item.node.nodeValue = full.slice(0, i); });
+          })(i);
+          t += delay;
+        }
+      });
+    }
 
     var t = 350;
-    // 予定が1行ずつ「印刷」される
-    evLines.forEach(function (el) {
-      at(t, function () { el.style.visibility = ''; });
-      t += 280;
+    // 日付が書かれていく
+    typeNodes(headNodes, Math.min(70, typeDelay + 15));
+    t += 300;
+    // 予定が1行ずつ、1文字ずつ「印刷」されていく
+    evNodeGroups.forEach(function (g) {
+      typeNodes(g, typeDelay);
+      t += 180;
     });
     t += 200;
     // 計画が1文字ずつ
