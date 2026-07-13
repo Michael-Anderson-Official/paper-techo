@@ -816,6 +816,78 @@
     background: linear-gradient(180deg, #d9e6d3, #c8dabf);
   }
 
+  /* 月ビューの選択日 */
+  .mg-cell.selected {
+    background: rgba(122, 158, 196, 0.14);
+    border-radius: 10px;
+  }
+  /* 選択日のプレビューパネル（紙のカード） */
+  .month-day-panel {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    z-index: 55;
+    background: var(--paper);
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(30, 22, 10, 0.35);
+    padding: 10px 14px 12px;
+    max-height: 34vh;
+    overflow-y: auto;
+  }
+  .mdp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  #mdpDate {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink-strong);
+  }
+  #mdpDate .mdp-sub {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-left: 6px;
+  }
+  #mdpDate .dow-sun { color: var(--sun); }
+  #mdpDate .dow-sat { color: var(--sat); }
+  #mdpOpenBtn {
+    flex: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: #4a4030;
+    background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .mdp-events {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--print);
+  }
+  .mdp-events .mdp-time {
+    display: inline-block;
+    min-width: 74px;
+    font-size: 12px;
+    color: var(--print-soft);
+  }
+  .mdp-events .mdp-empty {
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .mdp-events .mdp-note {
+    color: var(--ink-soft);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -852,6 +924,15 @@
   <button id="todayBtn" type="button">今日</button>
   <button id="nextBtn" type="button" aria-label="次へ">次へ ▶</button>
 </div>
+<!-- 月ビューで日をタップしたときの、その日のプレビュー（ミニカル方式） -->
+<div id="monthDayPanel" class="month-day-panel" style="display:none;">
+  <div class="mdp-head">
+    <span id="mdpDate"></span>
+    <button id="mdpOpenBtn" type="button">ページをひらく ▶</button>
+  </div>
+  <div id="mdpEvents" class="mdp-events"></div>
+</div>
+
 <div class="save-note" id="saveNote">とじました</div>
 
 <!-- 右上のメニュー（☰）と設定 -->
@@ -1149,8 +1230,59 @@
     return { frag: frag, iso: iso };
   }
 
+  // 月ビューの選択日（ミニカル方式: 1回目のタップで下にプレビュー、2回目でページへ）
+  var monthSel = null;
+
+  function hideMonthDayPanel() {
+    monthSel = null;
+    var p = document.getElementById('monthDayPanel');
+    if (p) p.style.display = 'none';
+    document.querySelectorAll('.mg-cell.selected').forEach(function (c) {
+      c.classList.remove('selected');
+    });
+  }
+
+  function showMonthDayPanel(iso) {
+    var panel = document.getElementById('monthDayPanel');
+    var dateEl = document.getElementById('mdpDate');
+    var evEl = document.getElementById('mdpEvents');
+    if (!panel || !dateEl || !evEl) return;
+    var d = fromISO(iso);
+    var holiday = HOLIDAYS[iso] || '';
+    var rokuyo = getRokuyoEnabled() ? rokuyoOf(iso) : '';
+    dateEl.innerHTML = (d.getMonth() + 1) + '月' + d.getDate() + '日' +
+      '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span>' +
+      '<span class="mdp-sub">' + (holiday ? holiday + ' ' : '') + rokuyo + '</span>';
+    evEl.innerHTML = '';
+    var cached = readCachedEvents(iso);
+    var list = cached ? cached.list : [];
+    if (list.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'mdp-empty';
+      empty.textContent = '予定はありません';
+      evEl.appendChild(empty);
+    } else {
+      list.forEach(function (ev) {
+        var line = document.createElement('div');
+        var t = document.createElement('span');
+        t.className = 'mdp-time';
+        t.textContent = ev.time;
+        line.appendChild(t);
+        line.appendChild(document.createTextNode(ev.title));
+        evEl.appendChild(line);
+      });
+    }
+    if (hasEntry(iso)) {
+      var note = document.createElement('div');
+      note.className = 'mdp-note';
+      note.textContent = '✎ この日には書き込みがあります';
+      evEl.appendChild(note);
+    }
+    panel.style.display = 'block';
+  }
+
   // 月のカレンダー。書き込みがある日には鉛筆のしるし、今日は赤鉛筆の丸。
-  // 日付タップでその日のページへめくれる
+  // 1回タップで下にその日のプレビュー、もう一度タップ（またはパネルの「ひらく」）でその日のページへ
   function buildMonthGrid(y, m, interactive) {
     var grid = document.createElement('div');
     grid.className = 'month-grid';
@@ -1221,9 +1353,19 @@
           }
           cell.appendChild(evs);
         }
+        if (monthSel === iso) cell.classList.add('selected');
         if (interactive) {
           cell.addEventListener('click', function () {
-            flipTo('day:' + iso, 1);
+            if (monthSel === iso) {
+              flipTo('day:' + iso, 1); // 2回目のタップでページへ
+              return;
+            }
+            monthSel = iso;
+            grid.querySelectorAll('.mg-cell.selected').forEach(function (c) {
+              c.classList.remove('selected');
+            });
+            cell.classList.add('selected');
+            showMonthDayPanel(iso);
           });
         }
         grid.appendChild(cell);
@@ -1386,6 +1528,7 @@
     under.id = 'currentPage';
     current.id = 'underPage';
     under.style.pointerEvents = '';
+    hideMonthDayPanel();
     currentView = targetView;
     var v = viewParts(targetView);
     if (v.type === 'day') currentISO = v.iso;
@@ -1675,6 +1818,10 @@
     var t = toISO(new Date());
     flipTo('day:' + t, t > v.iso ? 1 : -1);
   });
+  document.getElementById('mdpOpenBtn').addEventListener('click', function () {
+    if (monthSel) flipTo('day:' + monthSel, 1);
+  });
+
   // インデックスタブ: 月のカレンダーへ／日のページへ帰る
   document.getElementById('tabMonth').addEventListener('click', function () {
     statBump('month');
