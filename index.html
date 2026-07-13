@@ -132,6 +132,9 @@
   }
   .page-date .dow-sun { color: #c4645c; }
   .page-date .dow-sat { color: #5b7fa6; }
+  .page-date .big.is-holiday { color: #c4645c; }
+  .page-date .holiday-name { color: #c4645c; margin-left: 8px; }
+  .page-date .rokuyo-name { color: #8a8d99; margin-left: 8px; }
 
   /* 本文。罫線に行の高さを合わせたtextarea（キーボード書き） */
   .page-text {
@@ -346,16 +349,33 @@
     border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
     transform: rotate(-4deg);
   }
-  /* 書き込みがある日: 数字の下の鉛筆の短い線 */
+  /* 書き込みがある日: 数字の下の鉛筆の短い線（祝日名と重ならない位置） */
   .mg-cell .mark {
     position: absolute;
     left: 7px;
-    top: 28px;
+    top: 42px;
     transform: rotate(-2deg);
     width: 16px;
     height: 3px;
     border-radius: 2px;
     background: rgba(58, 60, 72, 0.4);
+  }
+  /* 祝日名（印刷風に小さく赤） */
+  .mg-holiday {
+    font-size: 8.5px;
+    line-height: 1.15;
+    color: #c4645c;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 六曜（セルの右上に小さくグレー） */
+  .mg-rokuyo {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    font-size: 8px;
+    color: #a2a7b3;
   }
 
   /* ページ右下の「つまみ」ヒント */
@@ -612,6 +632,11 @@
     <p class="settings-label">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
+    <p class="settings-label" style="margin-top:16px;">暦の表示</p>
+    <div class="week-chips">
+      <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
+    </div>
+    <p class="settings-note">大安・仏滅などをページと月のカレンダーに印刷します。</p>
     <p class="settings-label" style="margin-top:16px;">Googleカレンダー</p>
     <p id="gcalStatus" class="settings-note" style="margin-top:0;"></p>
     <button id="gcalConnectBtn" type="button" class="settings-close" style="margin-top:8px;">Googleカレンダーと連携</button>
@@ -682,6 +707,53 @@
     return (v >= 0 && v <= 6) ? v : 0;
   }
 
+  // ---- 暦（祝日・六曜） ----
+  // 祝日: 2026〜2027年（振替休日・国民の休日込み。内閣府の祝日法に基づく）
+  var HOLIDAYS = {
+    '2026-01-01': '元日', '2026-01-12': '成人の日', '2026-02-11': '建国記念の日',
+    '2026-02-23': '天皇誕生日', '2026-03-20': '春分の日', '2026-04-29': '昭和の日',
+    '2026-05-03': '憲法記念日', '2026-05-04': 'みどりの日', '2026-05-05': 'こどもの日',
+    '2026-05-06': '振替休日', '2026-07-20': '海の日', '2026-08-11': '山の日',
+    '2026-09-21': '敬老の日', '2026-09-22': '国民の休日', '2026-09-23': '秋分の日',
+    '2026-10-12': 'スポーツの日', '2026-11-03': '文化の日', '2026-11-23': '勤労感謝の日',
+    '2027-01-01': '元日', '2027-01-11': '成人の日', '2027-02-11': '建国記念の日',
+    '2027-02-23': '天皇誕生日', '2027-03-21': '春分の日', '2027-03-22': '振替休日',
+    '2027-04-29': '昭和の日', '2027-05-03': '憲法記念日', '2027-05-04': 'みどりの日',
+    '2027-05-05': 'こどもの日', '2027-07-19': '海の日', '2027-08-11': '山の日',
+    '2027-09-20': '敬老の日', '2027-09-23': '秋分の日', '2027-10-11': 'スポーツの日',
+    '2027-11-03': '文化の日', '2027-11-23': '勤労感謝の日'
+  };
+
+  // 六曜: 旧暦の (月+日)%6 で決まる。朔日（旧暦各月1日）の新暦日付と旧暦月番号を持てば計算できる。
+  // 下の朔日データは公開の旧暦・六曜カレンダー複数と突き合わせて検証済み（2026-11-10大安、
+  // 2027-01-08赤口、2027-09-30先負、2027-10-29仏滅、2026-07-13先負=旧5/29 など）。
+  // この範囲(2026-01-01〜2028-01-下旬)に閏月はない。範囲外は表示しない（誤った暦を出さない）
+  var KYUREKI_LUNATIONS = [
+    ['2025-12-20', 11], ['2026-01-19', 12], ['2026-02-17', 1], ['2026-03-19', 2],
+    ['2026-04-17', 3], ['2026-05-17', 4], ['2026-06-15', 5], ['2026-07-14', 6],
+    ['2026-08-13', 7], ['2026-09-11', 8], ['2026-10-11', 9], ['2026-11-09', 10],
+    ['2026-12-09', 11], ['2027-01-08', 12], ['2027-02-07', 1], ['2027-03-08', 2],
+    ['2027-04-06', 3], ['2027-05-06', 4], ['2027-06-05', 5], ['2027-07-04', 6],
+    ['2027-08-02', 7], ['2027-09-01', 8], ['2027-09-30', 9], ['2027-10-29', 10],
+    ['2027-11-28', 11], ['2027-12-28', 12]
+  ];
+  var ROKUYO_NAMES = ['大安', '赤口', '先勝', '友引', '先負', '仏滅'];
+
+  function rokuyoOf(iso) {
+    var found = null;
+    for (var i = KYUREKI_LUNATIONS.length - 1; i >= 0; i--) {
+      if (KYUREKI_LUNATIONS[i][0] <= iso) { found = KYUREKI_LUNATIONS[i]; break; }
+    }
+    if (!found) return '';
+    var d = Math.round((fromISO(iso) - fromISO(found[0])) / 86400000) + 1;
+    if (d > 30) return ''; // データ範囲外
+    return ROKUYO_NAMES[(found[1] + d) % 6];
+  }
+
+  function getRokuyoEnabled() {
+    return localStorage.getItem('pt:rokuyo') !== '0';
+  }
+
   // ---- ストレージ ----
   function keyText(iso) { return 'pt:' + iso + ':text'; }
   function keyInk(iso) { return 'pt:' + iso + ':ink'; }
@@ -712,10 +784,15 @@
     if (v.type === 'day') {
       iso = v.iso;
       var d = fromISO(iso);
+      var holiday = HOLIDAYS[iso] || '';
+      var rokuyo = getRokuyoEnabled() ? rokuyoOf(iso) : '';
       head.innerHTML =
-        '<span class="big">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
-        '<span class="' + dowClass(d) + '">（' + DOW[d.getDay()] + '）</span></span>' +
-        '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() + '</span>';
+        '<span class="big' + (holiday ? ' is-holiday' : '') + '">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
+        '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span></span>' +
+        '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() +
+        (holiday ? '<span class="holiday-name">' + holiday + '</span>' : '') +
+        (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
+        '</span>';
       frag.appendChild(head);
 
       // カレンダーの予定（印刷風）。中身はrenderPage後にloadDayEventsが入れる
@@ -774,6 +851,7 @@
     var startDow = (new Date(y, m - 1, 1).getDay() - ws + 7) % 7;
     var days = new Date(y, m, 0).getDate();
     var todayISO = toISO(new Date());
+    var rokuyoOn = getRokuyoEnabled();
     for (var pad = 0; pad < startDow; pad++) {
       var empty = document.createElement('div');
       empty.className = 'mg-cell';
@@ -785,10 +863,26 @@
         var iso = toISO(d);
         var cell = document.createElement('div');
         cell.className = 'mg-cell';
+        var holiday = HOLIDAYS[iso] || '';
         var num = document.createElement('span');
-        num.className = ('num ' + dowClass(d) + (iso === todayISO ? ' today' : '')).trim();
+        num.className = ('num ' + (holiday ? 'dow-sun' : dowClass(d)) + (iso === todayISO ? ' today' : '')).trim();
         num.textContent = day;
         cell.appendChild(num);
+        if (rokuyoOn) {
+          var rk = rokuyoOf(iso);
+          if (rk) {
+            var rkEl = document.createElement('span');
+            rkEl.className = 'mg-rokuyo';
+            rkEl.textContent = rk;
+            cell.appendChild(rkEl);
+          }
+        }
+        if (holiday) {
+          var hEl = document.createElement('div');
+          hEl.className = 'mg-holiday';
+          hEl.textContent = holiday;
+          cell.appendChild(hEl);
+        }
         if (hasEntry(iso)) {
           var mark = document.createElement('span');
           mark.className = 'mark';
@@ -1548,9 +1642,22 @@
       });
     }
 
+    // 六曜の表示トグル
+    var rokuyoToggle = document.getElementById('rokuyoToggle');
+    function updateRokuyoToggle() {
+      rokuyoToggle.classList.toggle('active', getRokuyoEnabled());
+    }
+    rokuyoToggle.addEventListener('click', function () {
+      localStorage.setItem('pt:rokuyo', getRokuyoEnabled() ? '0' : '1');
+      updateRokuyoToggle();
+      renderPage(document.getElementById('currentPage'), currentView, true);
+      flashSaved();
+    });
+
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
       renderChips();
+      updateRokuyoToggle();
       updateGcalUI();
       modal.style.display = 'flex';
     });
@@ -1612,6 +1719,9 @@
       gcalCodeClient.requestCode();
     });
   })();
+
+  // テスト用フック（アプリ動作には不使用）
+  window._pt = { rokuyoOf: rokuyoOf };
 
   // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
