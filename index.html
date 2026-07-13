@@ -444,10 +444,14 @@
     left: 18px;
     right: 14px;
     bottom: 18px;
+    transition: bottom 0.18s ease;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     grid-template-rows: 24px;
     grid-auto-rows: 1fr;
+  }
+  body.mdp-open .month-grid {
+    bottom: var(--mdp-space, 18px);
   }
   .mg-head {
     font-size: 12px;
@@ -1223,6 +1227,7 @@
 
   function hideMonthDayPanel() {
     monthSel = null;
+    document.body.classList.remove('mdp-open');
     var p = document.getElementById('monthDayPanel');
     if (p) p.style.display = 'none';
     document.querySelectorAll('.mg-cell.selected').forEach(function (c) {
@@ -1267,6 +1272,13 @@
       evEl.appendChild(note);
     }
     panel.style.display = 'block';
+    // パネルに隠れないよう、カレンダーの下端をパネルの上まで持ち上げる
+    var paper = document.getElementById('currentPage');
+    if (paper) {
+      var lift = paper.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + 8;
+      document.documentElement.style.setProperty('--mdp-space', Math.max(18, Math.round(lift)) + 'px');
+    }
+    document.body.classList.add('mdp-open');
   }
 
   // 月のカレンダー。書き込みがある日には鉛筆のしるし、今日は赤鉛筆の丸。
