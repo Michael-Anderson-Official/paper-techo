@@ -1514,18 +1514,11 @@
     under.style.pointerEvents = 'none'; // 切り替え中はまだ触れない
 
     if (transitionStyle() === 'slide') {
-      // 引き違い: 進む=手前の板が左へ滑って後ろの板が現れる / 戻る=左から板が滑り込む
+      // 引き違い: 行き先の板が横から滑り込んでくる（進む=右から / 戻る=左から）
       var W = book.getBoundingClientRect().width;
-      var slider;
-      if (dir > 0) {
-        slider = current;
-        slider.style.transform = 'translateX(0px)';
-        under.style.display = 'block';
-      } else {
-        slider = under;
-        slider.style.transform = 'translateX(' + (-W) + 'px)';
-        under.style.display = 'block';
-      }
+      var slider = under;
+      slider.style.transform = 'translateX(' + (dir > 0 ? W : -W) + 'px)';
+      under.style.display = 'block';
       slider.style.transition = 'none';
       slider.style.zIndex = '30';
       slider.classList.add('board-sliding');
@@ -1571,7 +1564,7 @@
 
   function setLeafProgress(t, progress) {
     if (t.mode === 'slide') {
-      var x = t.dir > 0 ? -progress * t.W : -t.W + progress * t.W;
+      var x = (t.dir > 0 ? 1 : -1) * t.W * (1 - progress);
       t.el.style.transform = 'translateX(' + x.toFixed(1) + 'px)';
       return;
     }
@@ -1645,9 +1638,9 @@
       slider.style.transition = 'transform 0.42s ' + ease;
       requestAnimationFrame(function () {
         if (commit) {
-          slider.style.transform = dir > 0 ? 'translateX(' + (-t.W) + 'px)' : 'translateX(0px)';
+          slider.style.transform = 'translateX(0px)'; // 滑り込んで着地
         } else {
-          slider.style.transform = dir > 0 ? 'translateX(0px)' : 'translateX(' + (-t.W) + 'px)';
+          slider.style.transform = 'translateX(' + ((dir > 0 ? 1 : -1) * t.W) + 'px)'; // 元の脇へ戻る
         }
       });
       var cleanupSlide = function () {
