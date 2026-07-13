@@ -161,27 +161,74 @@
     z-index: 30;
     pointer-events: none;
   }
-  .leaf .face {
+  /* 紙のしなり: めくる1枚を左右2枚の蝶番構造にして、外側の半分が遅れてついてくる */
+  .leaf-half {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    transform-style: preserve-3d;
+  }
+  .leaf-half.hl { left: 0; }
+  .leaf-half.hr {
+    left: 50%;
+    transform-origin: left center; /* 折り目（ページの中央）が蝶番 */
+  }
+  .leaf-half .face {
     position: absolute;
     inset: 0;
+    overflow: hidden;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
-  .leaf .face.back {
+  /* ページのクローンを半分ずつ見せる窓 */
+  .leaf-half .holder {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 200%;
+  }
+  .leaf-half.hl .holder { left: 0; }
+  .leaf-half.hr .holder { left: -100%; }
+  .leaf-half .face.back {
     transform: rotateY(180deg);
     background:
       url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
       linear-gradient(105deg, #efe8d8, #f6f0e2 40%, #e6decb);
-    border-radius: 9px 3px 3px 9px;
   }
-  /* めくり中の面の陰影 */
-  .leaf .face.front::after {
-    content: '';
+  /* しなりに合わせて濃くなる陰影（折り目まわり） */
+  .leaf-shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(100deg, rgba(60, 40, 20, 0.0) 60%, rgba(60, 40, 20, 0.18));
-    border-radius: 3px 9px 9px 3px;
+    opacity: 0;
+    pointer-events: none;
   }
+  .leaf-half.hl .leaf-shade {
+    background: linear-gradient(90deg, transparent 40%, rgba(60, 40, 20, 0.22));
+  }
+  .leaf-half.hr .leaf-shade {
+    background: linear-gradient(90deg, rgba(60, 40, 20, 0.26), transparent 55%);
+  }
+  /* めくり中、下のページの根元に落ちる影 */
+  #flipShadow {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 36%;
+    background: linear-gradient(90deg, rgba(50, 35, 18, 0.4), transparent);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 25; /* ページ(下)とめくる紙(30)の間 */
+  }
+  /* ボタン・タブからの自動めくりでも紙がしなるように */
+  @keyframes bendFwd { 0%, 100% { transform: rotateY(0deg); } 45% { transform: rotateY(15deg); } }
+  @keyframes bendBack { 0%, 100% { transform: rotateY(0deg); } 45% { transform: rotateY(-15deg); } }
+  @keyframes shadePulse { 0%, 100% { opacity: 0; } 45% { opacity: 1; } }
+  .leaf.auto-fwd .leaf-half.hr { animation: bendFwd 0.46s ease; }
+  .leaf.auto-back .leaf-half.hr { animation: bendBack 0.46s ease; }
+  .leaf.auto-fwd .leaf-shade, .leaf.auto-back .leaf-shade { animation: shadePulse 0.46s ease; }
+  #flipShadow.pulse { animation: shadePulse 0.46s ease; }
 
   /* 右端のインデックスタブ */
   .book-tabs {
@@ -493,6 +540,8 @@
   <div class="paper" id="underPage" style="display:none;"></div>
   <!-- 今のページ -->
   <div class="paper" id="currentPage"></div>
+  <!-- めくり中に根元へ落ちる影 -->
+  <div id="flipShadow"></div>
   <!-- 右端のインデックスタブ（本物の手帳の見出しタブ） -->
   <div class="book-tabs">
     <button id="tabDay" type="button" class="book-tab active" aria-label="日のページ">日</button>
@@ -836,6 +885,26 @@
   // 離したとき、進み具合としきい値・勢い（フリック）でめくり切るか元に戻すか決める
   var flipping = false;
 
+  // めくる紙の半分（前面=ページのクローンの半分＋しなり陰影、背面=紙の裏）
+  function buildLeafHalf(side, contentPaper) {
+    var half = document.createElement('div');
+    half.className = 'leaf-half ' + side;
+    var front = document.createElement('div');
+    front.className = 'face front';
+    var holder = document.createElement('div');
+    holder.className = 'holder';
+    holder.appendChild(contentPaper);
+    front.appendChild(holder);
+    var shade = document.createElement('div');
+    shade.className = 'leaf-shade';
+    front.appendChild(shade);
+    var back = document.createElement('div');
+    back.className = 'face back';
+    half.appendChild(front);
+    half.appendChild(back);
+    return half;
+  }
+
   // めくる1枚を用意する。dir>0=先へ（前面=今のページ）、dir<0=前へ（前面=行き先）
   function prepareLeaf(dir, targetView) {
     var book = document.getElementById('book');
@@ -845,29 +914,31 @@
     var leaf = document.createElement('div');
     leaf.className = 'leaf';
     leaf.style.transition = 'none';
-    var front = document.createElement('div');
-    front.className = 'face front';
-    var back = document.createElement('div');
-    back.className = 'face back';
-    leaf.appendChild(front);
-    leaf.appendChild(back);
 
     renderPage(under, targetView, false);
+    var srcEl;
     if (dir > 0) {
       // 下に行き先を見せて、今のページがめくれていく
       under.style.display = 'block';
-      var clone = current.cloneNode(true);
-      clone.id = '';
-      clone.style.visibility = 'visible';
-      front.appendChild(clone);
+      srcEl = current;
+    } else {
+      // 今のページは下に見えたまま、左から行き先が1枚戻ってくる
+      srcEl = under;
+    }
+    var cloneA = srcEl.cloneNode(true);
+    var cloneB = srcEl.cloneNode(true);
+    [cloneA, cloneB].forEach(function (c) {
+      c.id = '';
+      c.style.display = 'block';
+      c.style.visibility = 'visible';
+    });
+    leaf.appendChild(buildLeafHalf('hl', cloneA));
+    leaf.appendChild(buildLeafHalf('hr', cloneB));
+
+    if (dir > 0) {
       current.style.visibility = 'hidden';
       leaf.style.transform = 'rotateY(0deg)';
     } else {
-      // 今のページは下に見えたまま、左から行き先が1枚戻ってくる
-      var clone2 = under.cloneNode(true);
-      clone2.id = '';
-      clone2.style.display = 'block';
-      front.appendChild(clone2);
       under.style.display = 'none';
       leaf.style.transform = 'rotateY(-178deg)';
     }
@@ -875,23 +946,47 @@
     return leaf;
   }
 
-  // progress 0..1（1=めくり切った状態）
+  // progress 0..1（1=めくり切った状態）。
+  // 紙のしなり: 外側の半分が sin カーブで遅れてついてくる（めくり途中が最大、両端で平ら）
+  var LEAF_BEND_DEG = 15;
+
   function setLeafProgress(leaf, dir, progress) {
     var angle = dir > 0 ? -progress * 178 : -178 + progress * 178;
+    var wave = Math.sin(progress * Math.PI);
+    var bend = (dir > 0 ? 1 : -1) * LEAF_BEND_DEG * wave;
     leaf.style.transform = 'rotateY(' + angle + 'deg)';
+    var hr = leaf.querySelector('.leaf-half.hr');
+    if (hr) hr.style.transform = 'rotateY(' + bend.toFixed(2) + 'deg)';
+    leaf.querySelectorAll('.leaf-shade').forEach(function (s) {
+      s.style.opacity = (wave * 0.9).toFixed(3);
+    });
+    var shadow = document.getElementById('flipShadow');
+    if (shadow) shadow.style.opacity = (wave * 0.85).toFixed(3);
   }
 
-  // 離した後の着地。commit=trueでめくり切り、falseで元に戻す
+  // 離した後の着地。commit=trueでめくり切り、falseで元に戻す。
+  // 紙のしなり・陰影もいっしょに滑らかに解ける
   function settleLeaf(leaf, dir, commit, targetView) {
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
-    leaf.style.transition = 'transform 0.42s cubic-bezier(0.3, 0.1, 0.3, 1)';
+    var ease = 'cubic-bezier(0.3, 0.1, 0.3, 1)';
+    leaf.style.transition = 'transform 0.42s ' + ease;
+    var hr = leaf.querySelector('.leaf-half.hr');
+    if (hr) hr.style.transition = 'transform 0.42s ' + ease;
+    var shadow = document.getElementById('flipShadow');
+    if (shadow) shadow.style.transition = 'opacity 0.42s ' + ease;
+    leaf.querySelectorAll('.leaf-shade').forEach(function (s) {
+      s.style.transition = 'opacity 0.42s ' + ease;
+    });
     requestAnimationFrame(function () {
       if (commit) {
         leaf.style.transform = dir > 0 ? 'rotateY(-178deg)' : 'rotateY(0deg)';
       } else {
         leaf.style.transform = dir > 0 ? 'rotateY(0deg)' : 'rotateY(-178deg)';
       }
+      if (hr) hr.style.transform = 'rotateY(0deg)';
+      if (shadow) shadow.style.opacity = '0';
+      leaf.querySelectorAll('.leaf-shade').forEach(function (s) { s.style.opacity = '0'; });
     });
     setTimeout(function () {
       if (commit) {
@@ -902,16 +997,24 @@
       }
       current.style.visibility = 'visible';
       under.style.display = 'none';
+      if (shadow) {
+        shadow.style.transition = 'none';
+        shadow.style.opacity = '0';
+        shadow.classList.remove('pulse');
+      }
       if (leaf.parentNode) leaf.parentNode.removeChild(leaf);
       flipping = false;
     }, 470);
   }
 
-  // ボタン・タブからのめくり（一気にめくり切る）
+  // ボタン・タブからのめくり（一気にめくり切る。しなりはCSSアニメで）
   function flipTo(nextView, dir) {
     if (flipping || nextView === currentView) return;
     flipping = true;
     var leaf = prepareLeaf(dir, nextView);
+    leaf.classList.add(dir > 0 ? 'auto-fwd' : 'auto-back');
+    var shadow = document.getElementById('flipShadow');
+    if (shadow) shadow.classList.add('pulse');
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
         settleLeaf(leaf, dir, true, nextView);
