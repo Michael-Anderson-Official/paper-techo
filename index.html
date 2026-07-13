@@ -22,12 +22,30 @@
   /* 描画が届かない領域（iOSの下端など）が白く見えないよう、下地も机の色にしておく */
   html { background: #2b251f; }
 
-  /* 紙の色（設定で選べる）。紙面と、めくったときの紙の裏の色味を連動させる */
+  /* 紙の色（設定で選べる）。紙面・紙の裏・インク・罫線まで紙ごとに連動するテーマ変数 */
   :root {
     --paper: #f8f3e6;
     --paper-back-1: #efe8d8;
     --paper-back-2: #f6f0e2;
     --paper-back-3: #e6decb;
+    --ink-strong: #454a58;   /* 日付など */
+    --ink-text: #4a4e5c;     /* 本文 */
+    --ink-soft: #8a8d99;     /* わき役 */
+    --placeholder: rgba(122, 126, 140, 0.4);
+    --rule: rgba(122, 158, 196, 0.38);       /* 罫線 */
+    --rule-strong: rgba(122, 158, 196, 0.55);
+    --margin-line: rgba(214, 130, 122, 0.55); /* 赤マージン線 */
+    --print: #5d6f93;        /* 印刷された予定 */
+    --print-soft: #8291b0;
+    --sun: #c4645c;
+    --sat: #5b7fa6;
+    --today-ring: rgba(200, 80, 70, 0.75);
+    --stitch: rgba(120, 100, 70, 0.4);
+    --divider-label: #b08a84;
+    --mark: rgba(58, 60, 72, 0.4);
+    --mg-border: rgba(110, 130, 160, 0.3);
+    --corner: rgba(180, 160, 120, 0.25);
+    --shade-rgb: 60, 40, 20; /* めくりの陰影 */
   }
   body[data-paper="ivory"] {
     --paper: #fdf8ea;
@@ -40,6 +58,56 @@
     --paper-back-1: #f1f0ed;
     --paper-back-2: #f8f7f5;
     --paper-back-3: #e8e7e3;
+  }
+  /* 黒いノート（白ペンで書く） */
+  body[data-paper="black"] {
+    --paper: #23252a;
+    --paper-back-1: #1c1e22;
+    --paper-back-2: #26282e;
+    --paper-back-3: #17181c;
+    --ink-strong: #e8e6df;
+    --ink-text: #dfdcd2;
+    --ink-soft: #9a9890;
+    --placeholder: rgba(255, 255, 255, 0.28);
+    --rule: rgba(255, 255, 255, 0.14);
+    --rule-strong: rgba(255, 255, 255, 0.28);
+    --margin-line: rgba(235, 140, 130, 0.55);
+    --print: #9fb4d8;
+    --print-soft: #7f92b5;
+    --sun: #e08a80;
+    --sat: #8fa9d0;
+    --today-ring: rgba(235, 130, 120, 0.8);
+    --stitch: rgba(255, 255, 255, 0.22);
+    --divider-label: #c9a49e;
+    --mark: rgba(232, 230, 222, 0.45);
+    --mg-border: rgba(255, 255, 255, 0.16);
+    --corner: rgba(255, 255, 255, 0.12);
+    --shade-rgb: 0, 0, 0;
+  }
+  /* 黒板（チョークで書く） */
+  body[data-paper="board"] {
+    --paper: #33584a;
+    --paper-back-1: #2a4b3e;
+    --paper-back-2: #37604f;
+    --paper-back-3: #24413a;
+    --ink-strong: #f0ede2;
+    --ink-text: #e7e4d8;
+    --ink-soft: #a8b3a5;
+    --placeholder: rgba(255, 255, 255, 0.3);
+    --rule: rgba(255, 255, 255, 0.16);
+    --rule-strong: rgba(255, 255, 255, 0.3);
+    --margin-line: rgba(255, 190, 180, 0.5);
+    --print: #b8cfe4;
+    --print-soft: #93a9bd;
+    --sun: #f0a8a0;
+    --sat: #a8c4e8;
+    --today-ring: rgba(240, 168, 160, 0.85);
+    --stitch: rgba(255, 255, 255, 0.25);
+    --divider-label: #d8b8b2;
+    --mark: rgba(240, 238, 228, 0.5);
+    --mg-border: rgba(255, 255, 255, 0.18);
+    --corner: rgba(255, 255, 255, 0.12);
+    --shade-rgb: 0, 0, 0;
   }
 
   /* 机（背景）。木目っぽい暗色で紙を引き立てる */
@@ -73,7 +141,7 @@
     content: '';
     position: absolute;
     inset: 4px -6px -8px 2px;
-    background: #e9e2d2;
+    background: var(--paper-back-2);
     border-radius: 4px 10px 10px 4px;
     box-shadow:
       2px 3px 0 #ddd5c2,
@@ -94,11 +162,11 @@
         to bottom,
         transparent 0px,
         transparent 27px,
-        rgba(122, 158, 196, 0.38) 27px,
-        rgba(122, 158, 196, 0.38) 28px
+        var(--rule) 27px,
+        var(--rule) 28px
       ),
       /* 左の赤いマージン線 */
-      linear-gradient(to right, transparent 46px, rgba(214, 130, 122, 0.55) 46px, rgba(214, 130, 122, 0.55) 47.5px, transparent 47.5px);
+      linear-gradient(to right, transparent 46px, var(--margin-line) 46px, var(--margin-line) 47.5px, transparent 47.5px);
     background-position: 0 0, 0 88px, 0 0;
     border-radius: 3px 9px 9px 3px;
     box-shadow: inset 12px 0 22px -14px rgba(90, 70, 40, 0.5);
@@ -113,8 +181,8 @@
         to bottom,
         transparent 0px,
         transparent 27px,
-        rgba(122, 158, 196, 0.38) 27px,
-        rgba(122, 158, 196, 0.38) 28px
+        var(--rule) 27px,
+        var(--rule) 28px
       );
     background-position: 0 0, 0 88px;
   }
@@ -127,7 +195,7 @@
     bottom: 10px;
     left: 10px;
     width: 0;
-    border-left: 2.5px dashed rgba(120, 100, 70, 0.4);
+    border-left: 2.5px dashed var(--stitch);
   }
 
   /* 日付ヘッダー（鉛筆で書いたタイトル風） */
@@ -136,7 +204,7 @@
     top: 22px;
     left: 60px;
     right: 18px;
-    color: #454a58;
+    color: var(--ink-strong);
     line-height: 1.15;
     pointer-events: none;
   }
@@ -148,14 +216,14 @@
   .page-date .small {
     display: block;
     font-size: 13px;
-    color: #8a8d99;
+    color: var(--ink-soft);
     margin-top: 2px;
   }
-  .page-date .dow-sun { color: #c4645c; }
-  .page-date .dow-sat { color: #5b7fa6; }
-  .page-date .big.is-holiday { color: #c4645c; }
-  .page-date .holiday-name { color: #c4645c; margin-left: 8px; }
-  .page-date .rokuyo-name { color: #8a8d99; margin-left: 8px; }
+  .page-date .dow-sun { color: var(--sun); }
+  .page-date .dow-sat { color: var(--sat); }
+  .page-date .big.is-holiday { color: var(--sun); }
+  .page-date .holiday-name { color: var(--sun); margin-left: 8px; }
+  .page-date .rokuyo-name { color: var(--ink-soft); margin-left: 8px; }
 
   /* 本文エリア（計画＋日記の2区画）。罫線に行の高さを合わせる */
   .page-body {
@@ -176,13 +244,13 @@
     font-family: inherit;
     font-size: 19px;
     line-height: 28px;
-    color: #4a4e5c;
-    caret-color: #6b6f7d;
+    color: var(--ink-text);
+    caret-color: var(--ink-text);
     padding: 0 16px 0 56px;
     width: 100%;
     overflow-y: auto;
   }
-  .page-text::placeholder { color: rgba(122, 126, 140, 0.4); }
+  .page-text::placeholder { color: var(--placeholder); }
   .page-text.plan { flex: none; height: 308px; } /* 罫線11行ぶん */
   .page-text.diary { flex: 1 1 auto; min-height: 0; }
   /* 日記の区切り（左の余白に「日記」、少し濃い罫線） */
@@ -190,7 +258,7 @@
     flex: none;
     height: 28px;
     position: relative;
-    border-bottom: 1.5px solid rgba(122, 158, 196, 0.55);
+    border-bottom: 1.5px solid var(--rule-strong);
   }
   .page-divider .label {
     position: absolute;
@@ -198,7 +266,7 @@
     bottom: 3px;
     font-size: 11px;
     letter-spacing: 0.12em;
-    color: #b08a84;
+    color: var(--divider-label);
   }
 
   /* その日のカレンダー予定（手帳に印刷されている風。書き込みとは違うインク） */
@@ -217,7 +285,7 @@
     line-height: 28px;
     padding-left: 56px; /* タイトルは赤線の右、本文と同じ書き出し位置 */
     font-size: 16px;
-    color: #5d6f93;
+    color: var(--print);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -236,7 +304,7 @@
     font-size: 9.5px;
     line-height: 11px;
     letter-spacing: 0;
-    color: #8291b0;
+    color: var(--print-soft);
   }
   .page-event .ev-time span:first-child { align-self: flex-start; }
   .page-event .ev-time span + span { align-self: flex-end; }
@@ -307,10 +375,10 @@
     pointer-events: none;
   }
   .leaf-half.hl .leaf-shade {
-    background: linear-gradient(90deg, transparent 40%, rgba(60, 40, 20, 0.22));
+    background: linear-gradient(90deg, transparent 40%, rgba(var(--shade-rgb), 0.22));
   }
   .leaf-half.hr .leaf-shade {
-    background: linear-gradient(90deg, rgba(60, 40, 20, 0.26), transparent 55%);
+    background: linear-gradient(90deg, rgba(var(--shade-rgb), 0.26), transparent 55%);
   }
   /* めくり中、下のページの根元に落ちる影 */
   #flipShadow {
@@ -319,7 +387,7 @@
     top: 0;
     bottom: 0;
     width: 36%;
-    background: linear-gradient(90deg, rgba(50, 35, 18, 0.4), transparent);
+    background: linear-gradient(90deg, rgba(var(--shade-rgb), 0.4), transparent);
     opacity: 0;
     pointer-events: none;
     z-index: 25; /* ページ(下)とめくる紙(30)の間 */
@@ -378,18 +446,18 @@
   }
   .mg-head {
     font-size: 12px;
-    color: #8a8d99;
+    color: var(--ink-soft);
     text-align: center;
     align-self: center;
   }
-  .mg-head.dow-sun { color: #c4645c; }
-  .mg-head.dow-sat { color: #5b7fa6; }
+  .mg-head.dow-sun { color: var(--sun); }
+  .mg-head.dow-sat { color: var(--sat); }
   .mg-cell {
-    border-top: 1px solid rgba(110, 130, 160, 0.3);
+    border-top: 1px solid var(--mg-border);
     padding: 2px 3px;
     position: relative;
     font-size: 15px;
-    color: #4a4e5c;
+    color: var(--ink-text);
     cursor: pointer;
     min-height: 0;
   }
@@ -401,11 +469,11 @@
     height: 24px;
     line-height: 1;
   }
-  .mg-cell .num.dow-sun { color: #c4645c; }
-  .mg-cell .num.dow-sat { color: #5b7fa6; }
+  .mg-cell .num.dow-sun { color: var(--sun); }
+  .mg-cell .num.dow-sat { color: var(--sat); }
   /* 今日: 赤鉛筆で囲んだ丸（少し歪ませて手描き感） */
   .mg-cell .num.today {
-    border: 2px solid rgba(200, 80, 70, 0.75);
+    border: 2px solid var(--today-ring);
     border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
     transform: rotate(-4deg);
   }
@@ -418,13 +486,13 @@
     width: 16px;
     height: 3px;
     border-radius: 2px;
-    background: rgba(58, 60, 72, 0.4);
+    background: var(--mark);
   }
   /* 祝日名（印刷風に小さく赤） */
   .mg-holiday {
     font-size: 8.5px;
     line-height: 1.15;
-    color: #c4645c;
+    color: var(--sun);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -435,7 +503,7 @@
     top: 4px;
     right: 3px;
     font-size: 8px;
-    color: #a2a7b3;
+    color: var(--ink-soft);
   }
 
   /* ページ右下の「つまみ」ヒント */
@@ -445,7 +513,7 @@
     bottom: 6px;
     width: 34px;
     height: 34px;
-    background: linear-gradient(315deg, rgba(180, 160, 120, 0.25) 50%, transparent 50%);
+    background: linear-gradient(315deg, var(--corner) 50%, transparent 50%);
     border-radius: 0 0 9px 0;
     pointer-events: none;
   }
@@ -839,16 +907,32 @@
     return localStorage.getItem('pt:rokuyo') !== '0';
   }
 
-  // 紙の色（クリーム=既定・アイボリー・白）。CSS変数で紙面と紙の裏の色味が連動する
+  // 紙の色。CSS変数で紙面・紙の裏・罫線・インクの色味が連動する。
+  // [id, 表示名, 見本の背景色, 見本の文字色, 鉛筆のRGB]
+  // 黒は白ペン、黒板はチョークで書く（描画アルゴリズムは同じで色だけ変わる）
   var PAPER_COLORS = [
-    ['cream', 'クリーム', '#f8f3e6'],
-    ['ivory', 'アイボリー', '#fdf8ea'],
-    ['white', '白', '#fcfcfb']
+    ['cream', 'クリーム', '#f8f3e6', '#4a4e5c', '58, 60, 72'],
+    ['ivory', 'アイボリー', '#fdf8ea', '#4a4e5c', '58, 60, 72'],
+    ['white', '白', '#fcfcfb', '#4a4e5c', '58, 60, 72'],
+    ['black', '黒', '#23252a', '#e8e6df', '232, 230, 222'],
+    ['board', '黒板', '#33584a', '#f0ede2', '240, 238, 228']
   ];
 
   function getPaperColor() {
     var v = localStorage.getItem('pt:paper');
     return PAPER_COLORS.some(function (c) { return c[0] === v; }) ? v : 'cream';
+  }
+
+  function paperDef() {
+    var id = getPaperColor();
+    for (var i = 0; i < PAPER_COLORS.length; i++) {
+      if (PAPER_COLORS[i][0] === id) return PAPER_COLORS[i];
+    }
+    return PAPER_COLORS[0];
+  }
+
+  function inkStrokeRGB() {
+    return paperDef()[4];
   }
 
   function applyPaperColor() {
@@ -1082,14 +1166,14 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     // 本体の線
-    ctx.strokeStyle = 'rgba(58, 60, 72, ' + alpha.toFixed(3) + ')';
+    ctx.strokeStyle = 'rgba(' + inkStrokeRGB() + ', ' + alpha.toFixed(3) + ')';
     ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
     // 芯のかすれ（少しずらした淡い線）
-    ctx.strokeStyle = 'rgba(58, 60, 72, ' + (alpha * 0.35).toFixed(3) + ')';
+    ctx.strokeStyle = 'rgba(' + inkStrokeRGB() + ', ' + (alpha * 0.35).toFixed(3) + ')';
     ctx.lineWidth = Math.max(0.8, w * 0.55);
     ctx.beginPath();
     ctx.moveTo(x1 + 0.8 * s, y1 - 0.6 * s);
@@ -1887,6 +1971,7 @@
         b.className = 'paper-chip' + (c[0] === cur ? ' active' : '');
         b.textContent = c[1];
         b.style.background = c[2];
+        b.style.color = c[3];
         b.addEventListener('click', function () {
           localStorage.setItem('pt:paper', c[0]);
           applyPaperColor();
