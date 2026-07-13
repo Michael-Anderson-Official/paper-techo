@@ -82,6 +82,20 @@
     overflow: hidden;
   }
 
+  /* 月のカレンダーのページは赤いマージン線なし（ノイズ＋罫線のみ） */
+  .paper.is-month {
+    background-image:
+      url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 27px,
+        rgba(122, 158, 196, 0.38) 27px,
+        rgba(122, 158, 196, 0.38) 28px
+      );
+    background-position: 0 0, 0 88px;
+  }
+
   /* 綴じ（左端のステッチ） */
   .paper::before {
     content: '';
@@ -369,6 +383,9 @@
       border-radius: 0;
       /* ノッチの下まで紙を敷き、罫線の開始位置はセーフエリアぶん下げる */
       background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px)), 0 0;
+    }
+    .paper.is-month {
+      background-position: 0 0, 0 calc(88px + env(safe-area-inset-top, 0px));
     }
     .leaf .face.back { border-radius: 0; }
     .page-date {
@@ -848,8 +865,10 @@
   }
 
   // ---- ページの描画 ----
-  function renderPage(el, view, interactive) {
+  // silentChrome: めくり先を事前に描くとき、タブなどの見た目はまだ切り替えない
+  function renderPage(el, view, interactive, silentChrome) {
     el.innerHTML = '';
+    el.classList.toggle('is-month', viewParts(view).type === 'month');
     var built = buildPageContent(view, interactive);
     el.appendChild(built.frag);
     if (built.canvas) {
@@ -859,7 +878,7 @@
         if (interactive) attachPencil(built.canvas, built.iso);
       });
     }
-    if (interactive) updateChrome(view);
+    if (interactive && !silentChrome) updateChrome(view);
   }
 
   // タブの選択状態と鉛筆ボタンの出し分け（月のページに鉛筆は無い）
@@ -915,7 +934,10 @@
     leaf.className = 'leaf';
     leaf.style.transition = 'none';
 
-    renderPage(under, targetView, false);
+    // 行き先は最初から「本物」（interactive）として描いておき、
+    // 着地時は要素を入れ替えるだけにする（再描画ゼロ＝めくった瞬間から書ける）
+    renderPage(under, targetView, true, true);
+    under.style.pointerEvents = 'none'; // めくり中はまだ触れない
     var srcEl;
     if (dir > 0) {
       // 下に行き先を見せて、今のページがめくれていく
@@ -964,16 +986,53 @@
     if (shadow) shadow.style.opacity = (wave * 0.85).toFixed(3);
   }
 
-  // 離した後の着地。commit=trueでめくり切り、falseで元に戻す。
-  // 紙のしなり・陰影もいっしょに滑らかに解ける
-  function settleLeaf(leaf, dir, commit, targetView) {
+  // めくり確定: 事前に描いてあった行き先(under)と今のページを入れ替えるだけ。
+  // 再描画しないので一瞬で終わり、めくった直後から次の操作ができる
+  function commitPages(targetView) {
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
+    under.id = 'currentPage';
+    current.id = 'underPage';
+    under.style.display = 'block';
+    under.style.visibility = 'visible';
+    under.style.pointerEvents = '';
+    current.style.display = 'none';
+    current.style.visibility = 'visible';
+    currentView = targetView;
+    var v = viewParts(targetView);
+    if (v.type === 'day') currentISO = v.iso;
+    updateChrome(targetView);
+  }
+
+  // 着地アニメの後片付け（進行中なら早送りで即座に呼べる）
+  var pendingSettle = null; // { timer, cleanup }
+
+  function finishSettleNow() {
+    if (!pendingSettle) return;
+    clearTimeout(pendingSettle.timer);
+    var cleanup = pendingSettle.cleanup;
+    pendingSettle = null;
+    cleanup();
+  }
+
+  // 離した後の着地。commit=trueでめくり切り、falseで元に戻す。
+  // 状態の確定はアニメの「開始時」に済ませ、470ms後の後片付けは見た目だけ。
+  // だから着地アニメ中でも次のめくりを始められる（finishSettleNowで早送り）
+  function settleLeaf(leaf, dir, commit, targetView) {
     var ease = 'cubic-bezier(0.3, 0.1, 0.3, 1)';
+    var shadow = document.getElementById('flipShadow');
+    if (commit) {
+      commitPages(targetView);
+    } else {
+      // 取り消し: 元のページを見せ直す
+      var current = document.getElementById('currentPage');
+      var under = document.getElementById('underPage');
+      if (dir > 0) current.style.visibility = 'visible';
+      under.style.display = 'none';
+    }
     leaf.style.transition = 'transform 0.42s ' + ease;
     var hr = leaf.querySelector('.leaf-half.hr');
     if (hr) hr.style.transition = 'transform 0.42s ' + ease;
-    var shadow = document.getElementById('flipShadow');
     if (shadow) shadow.style.transition = 'opacity 0.42s ' + ease;
     leaf.querySelectorAll('.leaf-shade').forEach(function (s) {
       s.style.transition = 'opacity 0.42s ' + ease;
@@ -988,15 +1047,7 @@
       if (shadow) shadow.style.opacity = '0';
       leaf.querySelectorAll('.leaf-shade').forEach(function (s) { s.style.opacity = '0'; });
     });
-    setTimeout(function () {
-      if (commit) {
-        currentView = targetView;
-        var v = viewParts(targetView);
-        if (v.type === 'day') currentISO = v.iso;
-        renderPage(current, currentView, true);
-      }
-      current.style.visibility = 'visible';
-      under.style.display = 'none';
+    function cleanup() {
       if (shadow) {
         shadow.style.transition = 'none';
         shadow.style.opacity = '0';
@@ -1004,12 +1055,23 @@
       }
       if (leaf.parentNode) leaf.parentNode.removeChild(leaf);
       flipping = false;
-    }, 470);
+    }
+    pendingSettle = { cleanup: cleanup, timer: setTimeout(function () {
+      pendingSettle = null;
+      cleanup();
+    }, 470) };
+  }
+
+  // 進行中の着地があれば早送りして、新しいめくりを始められる状態にする。
+  // それでも塞がっていればfalse（ドラッグ操作中など）
+  function readyForFlip() {
+    if (flipping && pendingSettle) finishSettleNow();
+    return !flipping;
   }
 
   // ボタン・タブからのめくり（一気にめくり切る。しなりはCSSアニメで）
   function flipTo(nextView, dir) {
-    if (flipping || nextView === currentView) return;
+    if (!readyForFlip() || nextView === currentView) return;
     flipping = true;
     var leaf = prepareLeaf(dir, nextView);
     leaf.classList.add(dir > 0 ? 'auto-fwd' : 'auto-back');
@@ -1067,7 +1129,9 @@
     var active = null; // { leaf, dir, targetISO, width, progress, lastX, lastT, vel }
 
     book.addEventListener('pointerdown', function (ev) {
-      if (penMode || flipping) { startX = null; return; }
+      if (penMode) { startX = null; return; }
+      // 前のめくりの着地中なら早送りして、すぐ次をめくれるようにする
+      if (flipping && !readyForFlip()) { startX = null; return; }
       startX = ev.clientX;
       startY = ev.clientY;
       active = null;
@@ -1080,7 +1144,7 @@
       if (!active) {
         // 横方向の意思がはっきりしてからめくり始める（縦スクロールと衝突させない）
         if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-        if (flipping) { startX = null; return; }
+        if (!readyForFlip()) { startX = null; return; }
         var dir = dx < 0 ? 1 : -1;
         var targetView = stepView(currentView, dir);
         flipping = true;
