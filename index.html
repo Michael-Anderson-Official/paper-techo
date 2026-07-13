@@ -1584,6 +1584,45 @@
   }
 
   // ---- その日の予定（ページ上部に「印刷」される） ----
+  // ネイティブ版（Capacitor）では、Google OAuthの代わりにEventKitプラグインで
+  // 端末の全カレンダー（iCloud・Googleなど）から読む。Web版はGoogle API
+  function isNativeApp() {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  }
+
+  function formatNativeEvTime(ev) {
+    if (ev.allDay) return '終日';
+    var st = new Date(ev.start);
+    var s = st.getHours() + ':' + String(st.getMinutes()).padStart(2, '0');
+    if (ev.end) {
+      var et = new Date(ev.end);
+      s += '〜' + et.getHours() + ':' + String(et.getMinutes()).padStart(2, '0');
+    }
+    return s;
+  }
+
+  function fetchDayEventsNative(iso) {
+    var dayStart = fromISO(iso);
+    var dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayStart.getDate() + 1);
+    return window.Capacitor.Plugins.DeviceCalendar.listEvents({
+      from: dayStart.getTime(),
+      to: dayEnd.getTime()
+    }).then(function (res) {
+      var all = ((res && res.events) || []).map(function (ev) {
+        return {
+          time: formatNativeEvTime(ev),
+          title: ev.title || '(タイトルなし)',
+          sort: ev.allDay ? 0 : ev.start
+        };
+      });
+      all.sort(function (a, b) { return a.sort - b.sort; });
+      var list = all.map(function (ev) { return { time: ev.time, title: ev.title }; });
+      localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
+      return list;
+    });
+  }
+
   function readCachedEvents(iso) {
     try {
       var c = JSON.parse(localStorage.getItem('pt:events:' + iso) || 'null');
@@ -1697,12 +1736,13 @@
 
   function loadDayEvents(rootEl, iso) {
     renderEventsInto(rootEl, iso); // まずキャッシュを即表示（オフラインでも見える）
-    if (!gcalConnected() || navigator.onLine === false) return;
+    var native = isNativeApp();
+    if (!native && (!gcalConnected() || navigator.onLine === false)) return;
     var cached = readCachedEvents(iso);
     if (cached && Date.now() - cached.t < 10 * 60 * 1000) return; // 10分は使い回す
-    fetchDayEvents(iso).then(function () {
+    (native ? fetchDayEventsNative(iso) : fetchDayEvents(iso)).then(function () {
       if (rootEl.isConnected) renderEventsInto(rootEl, iso);
-    }).catch(function () { /* オフラインや失効は静かに諦める */ });
+    }).catch(function () { /* オフライン・失効・権限なしは静かに諦める */ });
   }
 
   // ---- メニューと設定 ----
@@ -1774,11 +1814,16 @@
       if (ev.target === modal) modal.style.display = 'none';
     });
 
-    // Googleカレンダー連携
+    // Googleカレンダー連携（ネイティブ版はEventKitが自動で全カレンダーを読むため、この節は不要）
     function updateGcalUI() {
       var st = document.getElementById('gcalStatus');
       var btn = document.getElementById('gcalConnectBtn');
       if (!st || !btn) return;
+      if (isNativeApp()) {
+        st.textContent = 'iPhoneのカレンダー（iCloud・Googleなど）の予定を自動で印刷します。初回にカレンダーへのアクセス許可を求めます。';
+        btn.style.display = 'none';
+        return;
+      }
       if (gcalConnected()) {
         st.textContent = localStorage.getItem('pt:gcal-scope-old') === '1'
           ? '連携中（メインのカレンダーのみ）。すべてのカレンダーを表示するには、一度解除してからもう一度連携してください。'
