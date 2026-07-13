@@ -24,10 +24,10 @@
 
   /* 紙の色（設定で選べる）。紙面・紙の裏・インク・罫線まで紙ごとに連動するテーマ変数 */
   :root {
-    --paper: #f8f3e6;
-    --paper-back-1: #efe8d8;
-    --paper-back-2: #f6f0e2;
-    --paper-back-3: #e6decb;
+    --paper: #fdf8ea; /* アイボリー（既定。クリームは2026-07-13廃止） */
+    --paper-back-1: #f4eeda;
+    --paper-back-2: #faf4e6;
+    --paper-back-3: #ebe4d0;
     --ink-strong: #454a58;   /* 日付など */
     --ink-text: #4a4e5c;     /* 本文 */
     --ink-soft: #8a8d99;     /* わき役 */
@@ -46,12 +46,6 @@
     --mg-border: rgba(110, 130, 160, 0.3);
     --corner: rgba(180, 160, 120, 0.25);
     --shade-rgb: 60, 40, 20; /* めくりの陰影 */
-  }
-  body[data-paper="ivory"] {
-    --paper: #fdf8ea;
-    --paper-back-1: #f4eeda;
-    --paper-back-2: #faf4e6;
-    --paper-back-3: #ebe4d0;
   }
   body[data-paper="white"] {
     --paper: #fcfcfb;
@@ -925,16 +919,17 @@
   // [id, 表示名, 見本の背景色, 見本の文字色, 鉛筆のRGB]
   // 黒は白ペン、黒板はチョークで書く（描画アルゴリズムは同じで色だけ変わる）
   var PAPER_COLORS = [
-    ['cream', 'クリーム', '#f8f3e6', '#4a4e5c', '58, 60, 72'],
-    ['ivory', 'アイボリー', '#fdf8ea', '#4a4e5c', '58, 60, 72'],
-    ['white', '白', '#fcfcfb', '#4a4e5c', '58, 60, 72'],
-    ['black', '黒', '#23252a', '#e8e6df', '232, 230, 222'],
-    ['board', '黒板', '#33584a', '#f0ede2', '240, 238, 228']
+    ['ivory', 'アイボリー', '#fdf8ea', '#4a4e5c', '58, 60, 72', false],
+    ['white', '白', '#fcfcfb', '#4a4e5c', '58, 60, 72', false],
+    ['black', '黒', '#23252a', '#e8e6df', '232, 230, 222', false],
+    ['board', '黒板', '#33584a', '#f0ede2', '240, 238, 228', true]
   ];
 
   function getPaperColor() {
     var v = localStorage.getItem('pt:paper');
-    return PAPER_COLORS.some(function (c) { return c[0] === v; }) ? v : 'cream';
+    // クリーム（廃止）や不正値・未解放のプレミアムはアイボリーへ
+    var hit = PAPER_COLORS.filter(function (c) { return c[0] === v && (!c[5] || isPremiumUser()); })[0];
+    return hit ? hit[0] : 'ivory';
   }
 
   function paperDef() {
@@ -960,7 +955,9 @@
   ];
 
   function isPremiumUser() {
-    return false; // 課金実装までのスタブ（study-plan-appと同じ流儀）
+    // 今の段階（IAP未実装）は全機能を開放しておく（2026-07-13ユーザー決定）。
+    // 課金実装時にレシート判定へ差し替え、falseが既定になる
+    return true;
   }
 
   function getWriteFont() {
@@ -2012,13 +2009,15 @@
       paperChips.innerHTML = '';
       var cur = getPaperColor();
       PAPER_COLORS.forEach(function (c) {
+        var locked = c[5] && !isPremiumUser();
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'paper-chip' + (c[0] === cur ? ' active' : '');
-        b.textContent = c[1];
+        b.className = 'paper-chip' + (c[0] === cur ? ' active' : '') + (locked ? ' locked' : '');
+        b.textContent = (locked ? '🔒 ' : '') + c[1];
         b.style.background = c[2];
         b.style.color = c[3];
         b.addEventListener('click', function () {
+          if (locked) return;
           localStorage.setItem('pt:paper', c[0]);
           applyPaperColor();
           renderPaperChips();
