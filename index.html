@@ -805,7 +805,106 @@
     return grid;
   }
 
-  // canvasにインク画像を読み込む（サイズ確定後に呼ぶ）
+  // ---- 手書きインク（ベクター保存） ----
+  // 線は「座標＋間隔(ms)の列」で保存して、開くたびに同じ描き方で再生する。
+  // PNG画像（1ページ20〜50KB）と違い、しるし数本なら数百バイトで済む。
+  // 保存形式: pt:ISO:ink = {v:1, cw, ch, strokes:[{e, p:[x10,y10,dt, ...]}], base?}
+  //   cw/ch: 保存時のキャンバスCSSサイズ（別サイズの画面では比率で伸縮して再生）
+  //   x10/y10: 座標×10の整数（0.1px精度） / dt: 前の点からのms / e:1=消しゴム
+  //   base: 旧PNG形式からの引き継ぎ画像（あれば線の下に敷く）
+
+  function parseInk(iso) {
+    var raw = localStorage.getItem(keyInk(iso));
+    if (!raw) return { strokes: [], base: null, cw: 0, ch: 0 };
+    if (raw.charAt(0) === '{') {
+      try {
+        var data = JSON.parse(raw);
+        return {
+          strokes: Array.isArray(data.strokes) ? data.strokes : [],
+          base: data.base || null,
+          cw: data.cw || 0,
+          ch: data.ch || 0
+        };
+      } catch (e) {
+        return { strokes: [], base: null, cw: 0, ch: 0 };
+      }
+    }
+    // 旧形式（PNGのdataURL）
+    return { strokes: [], base: raw, cw: 0, ch: 0 };
+  }
+
+  function saveInk(iso, ink, rect) {
+    try {
+      localStorage.setItem(keyInk(iso), JSON.stringify({
+        v: 1,
+        cw: Math.round(ink.cw || rect.width),
+        ch: Math.round(ink.ch || rect.height),
+        strokes: ink.strokes,
+        base: ink.base || undefined
+      }));
+      flashSaved();
+    } catch (e) { /* 容量超過などは黙って諦める（プロトタイプ） */ }
+  }
+
+  // 鉛筆の描き味（1セグメント）。速く動かすと細く薄く、ゆっくりだと太く濃く。
+  // ライブ描画と再生の両方がこれを通るので、見た目が完全に一致する
+  function drawSegment(ctx, x1, y1, x2, y2, dt, eraser, scale) {
+    var dist = Math.hypot(x2 - x1, y2 - y1);
+    var speed = dist / Math.max(1, dt) / (scale || 1); // 速度は保存時の座標系で
+    if (eraser) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      // 不透明で消す（strokeStyleを直前の鉛筆の薄いアルファのままにすると消えが弱くなる）
+      ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
+      ctx.lineWidth = 22 * (scale || 1);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    var s = scale || 1;
+    var w = Math.max(1.4, 3.2 - speed * 1.6) * s;
+    var alpha = Math.max(0.28, 0.62 - speed * 0.28);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // 本体の線
+    ctx.strokeStyle = 'rgba(58, 60, 72, ' + alpha.toFixed(3) + ')';
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // 芯のかすれ（少しずらした淡い線）
+    ctx.strokeStyle = 'rgba(58, 60, 72, ' + (alpha * 0.35).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(0.8, w * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(x1 + 0.8 * s, y1 - 0.6 * s);
+    ctx.lineTo(x2 + 0.8 * s, y2 - 0.6 * s);
+    ctx.stroke();
+  }
+
+  // 保存済みの線を再生する（画面サイズが変わっていたら比率で伸縮）
+  function replayInk(ctx, ink, rect) {
+    var sx = ink.cw ? rect.width / ink.cw : 1;
+    var sy = ink.ch ? rect.height / ink.ch : 1;
+    var scale = (sx + sy) / 2;
+    ink.strokes.forEach(function (stroke) {
+      var p = stroke.p; // [x10, y10, dt, x10, y10, dt, ...]
+      for (var i = 3; i + 2 < p.length; i += 3) {
+        drawSegment(
+          ctx,
+          (p[i - 3] / 10) * sx, (p[i - 2] / 10) * sy,
+          (p[i] / 10) * sx, (p[i + 1] / 10) * sy,
+          p[i + 2], stroke.e === 1, scale
+        );
+      }
+    });
+  }
+
+  // canvasを実寸に合わせて、保存済みインクを描き込む（サイズ確定後に呼ぶ）
   function setupInk(canvas, iso) {
     var rect = canvas.getBoundingClientRect();
     var dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -813,21 +912,26 @@
     canvas.height = Math.round(rect.height * dpr);
     var ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
-    var saved = localStorage.getItem(keyInk(iso));
-    if (saved) {
+    var ink = parseInk(iso);
+    if (ink.base) {
+      // 旧PNG形式からの引き継ぎ。画像を下に敷いてから線を再生する
       var img = new Image();
-      img.onload = function () { ctx.drawImage(img, 0, 0, rect.width, rect.height); };
-      img.src = saved;
+      img.onload = function () {
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        replayInk(ctx, ink, rect);
+      };
+      img.src = ink.base;
+    } else {
+      replayInk(ctx, ink, rect);
     }
-    return ctx;
+    return { ctx: ctx, ink: ink, rect: rect };
   }
 
-  // ---- 鉛筆の描き味 ----
-  // 速く動かすと細く薄く、ゆっくりだと太く濃く。芯のかすれは平行な淡い線で出す
   function attachPencil(canvas, iso) {
-    var ctx = null;
+    var state = null; // {ctx, ink, rect}
     var drawing = false;
     var last = null;
+    var currentStroke = null;
 
     function pos(ev) {
       var r = canvas.getBoundingClientRect();
@@ -836,63 +940,37 @@
 
     canvas.addEventListener('pointerdown', function (ev) {
       if (!penMode) return;
-      if (!ctx) ctx = setupInk(canvas, iso);
+      if (!state) state = setupInk(canvas, iso);
       drawing = true;
       last = pos(ev);
+      currentStroke = { e: eraserMode ? 1 : 0, p: [Math.round(last.x * 10), Math.round(last.y * 10), 0] };
       canvas.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
 
     canvas.addEventListener('pointermove', function (ev) {
-      if (!drawing || !ctx) return;
+      if (!drawing || !state) return;
       var p = pos(ev);
-      var dx = p.x - last.x, dy = p.y - last.y;
-      var dist = Math.hypot(dx, dy);
+      var dist = Math.hypot(p.x - last.x, p.y - last.y);
       if (dist < 0.8) return;
-      var dt = Math.max(1, p.t - last.t);
-      var speed = dist / dt; // px/ms
-
-      if (eraserMode) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.lineWidth = 22;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(last.x, last.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        ctx.restore();
-      } else {
-        var w = Math.max(1.4, 3.2 - speed * 1.6);
-        var alpha = Math.max(0.28, 0.62 - speed * 0.28);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        // 本体の線
-        ctx.strokeStyle = 'rgba(58, 60, 72, ' + alpha.toFixed(3) + ')';
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        ctx.moveTo(last.x, last.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        // 芯のかすれ（少しずらした淡い線）
-        ctx.strokeStyle = 'rgba(58, 60, 72, ' + (alpha * 0.35).toFixed(3) + ')';
-        ctx.lineWidth = Math.max(0.8, w * 0.55);
-        ctx.beginPath();
-        ctx.moveTo(last.x + 0.8, last.y - 0.6);
-        ctx.lineTo(p.x + 0.8, p.y - 0.6);
-        ctx.stroke();
-      }
+      var dt = Math.min(255, Math.max(1, Math.round(p.t - last.t)));
+      drawSegment(state.ctx, last.x, last.y, p.x, p.y, dt, currentStroke.e === 1, 1);
+      currentStroke.p.push(Math.round(p.x * 10), Math.round(p.y * 10), dt);
       last = p;
     });
 
     function up() {
       if (!drawing) return;
       drawing = false;
-      // 保存（描き終わりごと）
-      try {
-        localStorage.setItem(keyInk(iso), canvas.toDataURL('image/png'));
-        flashSaved();
-      } catch (e) { /* 容量超過などは黙って諦める（プロトタイプ） */ }
+      if (currentStroke && currentStroke.p.length > 3) {
+        state.ink.strokes.push(currentStroke);
+        if (!state.ink.cw) {
+          state.ink.cw = Math.round(state.rect.width);
+          state.ink.ch = Math.round(state.rect.height);
+        }
+        saveInk(iso, state.ink, state.rect);
+      }
+      currentStroke = null;
     }
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
