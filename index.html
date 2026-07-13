@@ -138,14 +138,18 @@
   .page-date .holiday-name { color: #c4645c; margin-left: 8px; }
   .page-date .rokuyo-name { color: #8a8d99; margin-left: 8px; }
 
-  /* 本文。罫線に行の高さを合わせたtextarea（キーボード書き） */
-  .page-text {
+  /* 本文エリア（計画＋日記の2区画）。罫線に行の高さを合わせる */
+  .page-body {
     position: absolute;
     top: 88px;
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 0 16px 20px 56px;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 14px;
+  }
+  .page-text {
     border: 0;
     background: transparent;
     resize: none;
@@ -155,9 +159,28 @@
     line-height: 28px;
     color: #4a4e5c;
     caret-color: #6b6f7d;
+    padding: 0 16px 0 56px;
+    width: 100%;
     overflow-y: auto;
   }
   .page-text::placeholder { color: rgba(122, 126, 140, 0.4); }
+  .page-text.plan { flex: none; height: 308px; } /* 罫線11行ぶん */
+  .page-text.diary { flex: 1 1 auto; min-height: 0; }
+  /* 日記の区切り（左の余白に「日記」、少し濃い罫線） */
+  .page-divider {
+    flex: none;
+    height: 28px;
+    position: relative;
+    border-bottom: 1.5px solid rgba(122, 158, 196, 0.55);
+  }
+  .page-divider .label {
+    position: absolute;
+    left: 17px; /* 綴じステッチと赤線の間の余白に置く */
+    bottom: 3px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: #b08a84;
+  }
 
   /* その日のカレンダー予定（手帳に印刷されている風。書き込みとは違うインク） */
   .page-events {
@@ -441,7 +464,7 @@
     .page-date {
       top: calc(22px + env(safe-area-inset-top, 0px));
     }
-    .page-text {
+    .page-body {
       top: calc(88px + env(safe-area-inset-top, 0px));
       padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     }
@@ -702,7 +725,9 @@
   }
 
   function hasEntry(iso) {
-    return !!((localStorage.getItem(keyText(iso)) || '').trim() || localStorage.getItem(keyInk(iso)));
+    return !!((localStorage.getItem(keyText(iso)) || '').trim() ||
+      (localStorage.getItem(keyDiary(iso)) || '').trim() ||
+      localStorage.getItem(keyInk(iso)));
   }
 
   // 週の始まり（0=日〜6=土）。月のカレンダーの列順に効く
@@ -760,6 +785,7 @@
 
   // ---- ストレージ ----
   function keyText(iso) { return 'pt:' + iso + ':text'; }
+  function keyDiary(iso) { return 'pt:' + iso + ':diary'; }
   function keyInk(iso) { return 'pt:' + iso + ':ink'; }
 
   var saveNoteTimer = 0;
@@ -804,21 +830,36 @@
       evBox.className = 'page-events';
       frag.appendChild(evBox);
 
-      var ta = document.createElement('textarea');
-      ta.className = 'page-text';
-      ta.placeholder = interactive ? 'きょうの計画を書く…' : '';
-      ta.value = localStorage.getItem(keyText(iso)) || '';
-      ta.spellcheck = false;
-      if (interactive) {
-        ta.addEventListener('input', function () {
-          localStorage.setItem(keyText(iso), ta.value);
-          flashSaved();
-        });
-      } else {
-        ta.readOnly = true;
-        ta.tabIndex = -1;
+      // 本文: 上=きょうの計画、区切り線、下=日記
+      function makeTextarea(cls, key, ph) {
+        var ta = document.createElement('textarea');
+        ta.className = 'page-text ' + cls;
+        ta.placeholder = interactive ? ph : '';
+        ta.value = localStorage.getItem(key) || '';
+        ta.spellcheck = false;
+        if (interactive) {
+          ta.addEventListener('input', function () {
+            localStorage.setItem(key, ta.value);
+            flashSaved();
+          });
+        } else {
+          ta.readOnly = true;
+          ta.tabIndex = -1;
+        }
+        return ta;
       }
-      frag.appendChild(ta);
+      var body = document.createElement('div');
+      body.className = 'page-body';
+      body.appendChild(makeTextarea('plan', keyText(iso), 'きょうの計画を書く…'));
+      var divider = document.createElement('div');
+      divider.className = 'page-divider';
+      var dLabel = document.createElement('span');
+      dLabel.className = 'label';
+      dLabel.textContent = '日記';
+      divider.appendChild(dLabel);
+      body.appendChild(divider);
+      body.appendChild(makeTextarea('diary', keyDiary(iso), 'きょうの日記…'));
+      frag.appendChild(body);
 
       canvas = document.createElement('canvas');
       canvas.className = 'page-ink';
@@ -1627,8 +1668,8 @@
 
   function renderEventsInto(rootEl, iso) {
     var box = rootEl.querySelector('.page-events');
-    var ta = rootEl.querySelector('.page-text');
-    if (!box || !ta) return;
+    var body = rootEl.querySelector('.page-body');
+    if (!box || !body) return;
     var cached = readCachedEvents(iso);
     var shown = (cached ? cached.list : []).slice(0, 5);
     box.innerHTML = '';
@@ -1643,8 +1684,8 @@
       box.appendChild(line);
     });
     box.style.display = shown.length ? 'block' : 'none';
-    // 予定のぶんだけ書き込み欄を下の罫線へずらす（罫線1本=28px）
-    ta.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (shown.length * 28) + 'px)';
+    // 予定のぶんだけ本文（計画＋日記）を下の罫線へずらす（罫線1本=28px）
+    body.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (shown.length * 28) + 'px)';
   }
 
   function loadDayEvents(rootEl, iso) {
