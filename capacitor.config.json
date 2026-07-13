@@ -1,0 +1,9 @@
+{
+  "appId": "jp.tezawari.techo",
+  "appName": "手ざわり手帳",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#f8f3e6"
+  }
+}
