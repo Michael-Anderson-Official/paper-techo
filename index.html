@@ -22,6 +22,26 @@
   /* 描画が届かない領域（iOSの下端など）が白く見えないよう、下地も机の色にしておく */
   html { background: #2b251f; }
 
+  /* 紙の色（設定で選べる）。紙面と、めくったときの紙の裏の色味を連動させる */
+  :root {
+    --paper: #f8f3e6;
+    --paper-back-1: #efe8d8;
+    --paper-back-2: #f6f0e2;
+    --paper-back-3: #e6decb;
+  }
+  body[data-paper="ivory"] {
+    --paper: #fdf8ea;
+    --paper-back-1: #f4eeda;
+    --paper-back-2: #faf4e6;
+    --paper-back-3: #ebe4d0;
+  }
+  body[data-paper="white"] {
+    --paper: #fcfcfb;
+    --paper-back-1: #f1f0ed;
+    --paper-back-2: #f8f7f5;
+    --paper-back-3: #e8e7e3;
+  }
+
   /* 机（背景）。木目っぽい暗色で紙を引き立てる */
   body {
     background:
@@ -65,7 +85,7 @@
   .paper {
     position: absolute;
     inset: 0;
-    background-color: #f8f3e6;
+    background-color: var(--paper);
     background-image:
       /* 紙の粒（SVGノイズ） */
       url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
@@ -277,7 +297,7 @@
     transform: rotateY(180deg);
     background:
       url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
-      linear-gradient(105deg, #efe8d8, #f6f0e2 40%, #e6decb);
+      linear-gradient(105deg, var(--paper-back-1), var(--paper-back-2) 40%, var(--paper-back-3));
   }
   /* しなりに合わせて濃くなる陰影（折り目まわり） */
   .leaf-shade {
@@ -459,7 +479,7 @@
      広い画面（PC）では従来の「机の上のノート」を維持する */
   @media (max-width: 600px) {
     /* 縁なしモードでは、届かない領域も紙色にして「紙が最後まで続いてる」ように見せる */
-    html, body { background: #f8f3e6; }
+    html, body { background: var(--paper); }
     .book {
       position: fixed;
       inset: 0;
@@ -606,6 +626,17 @@
     color: #fff;
     font-weight: 600;
   }
+  /* 紙の色えらび: ボタン自体が紙見本 */
+  .paper-chip {
+    width: auto !important;
+    padding: 0 14px;
+    border-radius: 20px !important;
+    color: #4a4e5c !important;
+  }
+  .paper-chip.active {
+    border: 2.5px solid #5a7d5a !important;
+    font-weight: 600;
+  }
   .settings-note {
     font-size: 12px;
     color: #8a8d99;
@@ -675,6 +706,8 @@
     <p class="settings-label">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
+    <p class="settings-label" style="margin-top:16px;">紙の色</p>
+    <div id="paperChips" class="week-chips"></div>
     <p class="settings-label" style="margin-top:16px;">暦の表示</p>
     <div class="week-chips">
       <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
@@ -804,6 +837,22 @@
 
   function getRokuyoEnabled() {
     return localStorage.getItem('pt:rokuyo') !== '0';
+  }
+
+  // 紙の色（クリーム=既定・アイボリー・白）。CSS変数で紙面と紙の裏の色味が連動する
+  var PAPER_COLORS = [
+    ['cream', 'クリーム', '#f8f3e6'],
+    ['ivory', 'アイボリー', '#fdf8ea'],
+    ['white', '白', '#fcfcfb']
+  ];
+
+  function getPaperColor() {
+    var v = localStorage.getItem('pt:paper');
+    return PAPER_COLORS.some(function (c) { return c[0] === v; }) ? v : 'cream';
+  }
+
+  function applyPaperColor() {
+    document.body.setAttribute('data-paper', getPaperColor());
   }
 
   // ---- ストレージ ----
@@ -1472,6 +1521,7 @@
   })();
 
   // ---- 起動 ----
+  applyPaperColor();
   renderPage(document.getElementById('currentPage'), currentView, true);
 
   // ---- Googleカレンダー連携 ----
@@ -1826,6 +1876,27 @@
       });
     }
 
+    // 紙の色えらび（ボタン自体が紙見本になっている）
+    var paperChips = document.getElementById('paperChips');
+    function renderPaperChips() {
+      paperChips.innerHTML = '';
+      var cur = getPaperColor();
+      PAPER_COLORS.forEach(function (c) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'paper-chip' + (c[0] === cur ? ' active' : '');
+        b.textContent = c[1];
+        b.style.background = c[2];
+        b.addEventListener('click', function () {
+          localStorage.setItem('pt:paper', c[0]);
+          applyPaperColor();
+          renderPaperChips();
+          flashSaved();
+        });
+        paperChips.appendChild(b);
+      });
+    }
+
     // 六曜の表示トグル
     var rokuyoToggle = document.getElementById('rokuyoToggle');
     function updateRokuyoToggle() {
@@ -1841,6 +1912,7 @@
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
       renderChips();
+      renderPaperChips();
       updateRokuyoToggle();
       updateGcalUI();
       modal.style.display = 'flex';
