@@ -187,7 +187,7 @@
     top: calc(88px + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
-    padding: 0 16px 0 56px;
+    padding: 0 16px 0 0; /* 左余白は.page-event側（時刻を赤線の左に置くため親は0） */
     pointer-events: none;
     display: none;
   }
