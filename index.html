@@ -488,16 +488,35 @@
     border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
     transform: rotate(-4deg);
   }
-  /* 書き込みがある日: 数字の下の鉛筆の短い線（祝日名と重ならない位置） */
+  /* 書き込みがある日: 鉛筆の短い線（マス下端。予定表示と重ならない位置） */
   .mg-cell .mark {
     position: absolute;
     left: 7px;
-    top: 42px;
+    bottom: 4px;
     transform: rotate(-2deg);
     width: 16px;
     height: 3px;
     border-radius: 2px;
     background: var(--mark);
+  }
+  /* マス内の予定（小さな印刷。2件まで＋あふれは+n） */
+  .mg-evs {
+    position: absolute;
+    top: 40px;
+    left: 2px;
+    right: 2px;
+    overflow: hidden;
+  }
+  .mg-ev {
+    font-size: 9px;
+    line-height: 12px;
+    color: var(--print);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mg-ev.more {
+    color: var(--ink-soft);
   }
   /* 祝日名（印刷風に小さく赤） */
   .mg-holiday {
@@ -1196,6 +1215,25 @@
           mark.className = 'mark';
           cell.appendChild(mark);
         }
+        // その日の予定（キャッシュから2件まで印刷）
+        var cachedEv = readCachedEvents(iso);
+        if (cachedEv && cachedEv.list.length) {
+          var evs = document.createElement('div');
+          evs.className = 'mg-evs';
+          cachedEv.list.slice(0, 2).forEach(function (ev) {
+            var line = document.createElement('div');
+            line.className = 'mg-ev';
+            line.textContent = ev.title;
+            evs.appendChild(line);
+          });
+          if (cachedEv.list.length > 2) {
+            var more = document.createElement('div');
+            more.className = 'mg-ev more';
+            more.textContent = '+' + (cachedEv.list.length - 2);
+            evs.appendChild(more);
+          }
+          cell.appendChild(evs);
+        }
         if (interactive) {
           cell.addEventListener('click', function () {
             flipTo('day:' + iso, 1);
@@ -1215,6 +1253,8 @@
     var built = buildPageContent(view, interactive);
     el.appendChild(built.frag);
     if (built.iso) loadDayEvents(el, built.iso); // カレンダーの予定（キャッシュ即表示＋裏で更新）
+    var mv = viewParts(view);
+    if (mv.type === 'month' && interactive) loadMonthEvents(mv.y, mv.m, el);
     if (interactive && !silentChrome) updateChrome(view);
   }
 
@@ -2086,6 +2126,98 @@
     (native ? fetchDayEventsNative(iso) : fetchDayEvents(iso)).then(function () {
       if (rootEl.isConnected) renderEventsInto(rootEl, iso);
     }).catch(function () { /* オフライン・失効・権限なしは静かに諦める */ });
+  }
+
+  // 月まるごとの予定取得。日別キャッシュ（pt:events:ISO）に書き込むので、
+  // 月ビューの表示と日ページのキャッシュ温めを1回のリクエストで済ませる。
+  // 複数日にまたがる終日予定は、かかっている日すべてに入れる
+  function bucketEventInto(buckets, startMs, endMs, allDay, time, title, y, m) {
+    var d = new Date(startMs);
+    var last = new Date(Math.max(startMs, (endMs || startMs) - 1));
+    var guard = 0;
+    while (d <= last && guard < 62) {
+      var iso = toISO(d);
+      if (!buckets[iso]) buckets[iso] = [];
+      buckets[iso].push({ time: time, title: title, sort: allDay ? 0 : startMs });
+      if (!allDay) break; // 時刻つきは開始日だけ
+      d.setDate(d.getDate() + 1);
+      guard++;
+    }
+  }
+
+  function loadMonthEvents(y, m, rootEl) {
+    var native = isNativeApp();
+    if (!native && !gcalConnected()) return;
+    if (navigator.onLine === false) return;
+    var ym = y + '-' + String(m).padStart(2, '0');
+    var stamp = parseInt(localStorage.getItem('pt:events-month:' + ym), 10) || 0;
+    if (Date.now() - stamp < 10 * 60 * 1000) return; // 10分は使い回す
+    var monthStart = new Date(y, m - 1, 1);
+    var monthEnd = new Date(y, m, 1);
+
+    var fetchPromise;
+    if (native) {
+      fetchPromise = window.Capacitor.Plugins.DeviceCalendar.listEvents({
+        from: monthStart.getTime(),
+        to: monthEnd.getTime()
+      }).then(function (res) {
+        var buckets = {};
+        ((res && res.events) || []).forEach(function (ev) {
+          bucketEventInto(buckets, ev.start, ev.end, !!ev.allDay,
+            formatNativeEvTime(ev), ev.title || '(タイトルなし)', y, m);
+        });
+        return buckets;
+      });
+    } else {
+      fetchPromise = listGcalCalendars().then(function (calIds) {
+        var fetches = calIds.map(function (calId) {
+          var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events' +
+            '?timeMin=' + encodeURIComponent(monthStart.toISOString()) +
+            '&timeMax=' + encodeURIComponent(monthEnd.toISOString()) +
+            '&singleEvents=true&orderBy=startTime&maxResults=250';
+          return fetchGcalApi(url).then(function (res) {
+            if (!res.ok) return { items: [] };
+            return res.json();
+          }).catch(function () { return { items: [] }; });
+        });
+        return Promise.all(fetches);
+      }).then(function (results) {
+        var buckets = {};
+        results.forEach(function (data) {
+          (data.items || []).forEach(function (ev) {
+            var allDay = !(ev.start && ev.start.dateTime);
+            var startMs, endMs;
+            if (allDay) {
+              startMs = fromISO(ev.start.date).getTime();
+              endMs = fromISO(ev.end && ev.end.date ? ev.end.date : ev.start.date).getTime(); // endは翌日を指す（排他的）
+            } else {
+              startMs = new Date(ev.start.dateTime).getTime();
+              endMs = startMs;
+            }
+            bucketEventInto(buckets, startMs, endMs, allDay,
+              formatEvTime(ev), ev.summary || '(タイトルなし)', y, m);
+          });
+        });
+        return buckets;
+      });
+    }
+
+    fetchPromise.then(function (buckets) {
+      // 月内の全日を書き込む（予定なしの日も空リストで温める）
+      var days = new Date(y, m, 0).getDate();
+      for (var day = 1; day <= days; day++) {
+        var iso = toISO(new Date(y, m - 1, day));
+        var list = (buckets[iso] || []).sort(function (a, b) { return a.sort - b.sort; })
+          .map(function (ev) { return { time: ev.time, title: ev.title }; });
+        localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
+      }
+      localStorage.setItem('pt:events-month:' + ym, String(Date.now()));
+      // まだこの月を見ていたら描き直す
+      var v = viewParts(currentView);
+      if (rootEl && rootEl.isConnected && v.type === 'month' && v.y === y && v.m === m) {
+        renderPage(document.getElementById('currentPage'), currentView, true);
+      }
+    }).catch(function () { /* オフライン等は静かに */ });
   }
 
   // ---- メニューと設定 ----
