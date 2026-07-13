@@ -1262,21 +1262,30 @@
   }
 
   // めくり確定: 事前に描いてあった行き先(under)と今のページを入れ替えるだけ。
-  // 再描画しないので一瞬で終わり、めくった直後から次の操作ができる
-  function commitPages(targetView) {
+  // 再描画しないので一瞬で終わり、めくった直後から次の操作ができる。
+  // deferVisual=true（戻りめくり）のときは、状態だけ先に確定して
+  // 見た目の入れ替え関数を返す（紙が着地してから呼ぶ）。
+  // 戻りでは着地まで「離れる日のページ」が下に見えているのが物理的に正しく、
+  // 先に入れ替えると行き先の日の予定が一瞬透けて見えてしまう
+  function commitPages(targetView, deferVisual) {
     var current = document.getElementById('currentPage');
     var under = document.getElementById('underPage');
     under.id = 'currentPage';
     current.id = 'underPage';
-    under.style.display = 'block';
-    under.style.visibility = 'visible';
     under.style.pointerEvents = '';
-    current.style.display = 'none';
-    current.style.visibility = 'visible';
     currentView = targetView;
     var v = viewParts(targetView);
     if (v.type === 'day') currentISO = v.iso;
     updateChrome(targetView);
+    function finishVisual() {
+      under.style.display = 'block';
+      under.style.visibility = 'visible';
+      current.style.display = 'none';
+      current.style.visibility = 'visible';
+    }
+    if (deferVisual) return finishVisual;
+    finishVisual();
+    return null;
   }
 
   // 着地アニメの後片付け（進行中なら早送りで即座に呼べる）
@@ -1296,8 +1305,10 @@
   function settleLeaf(leaf, dir, commit, targetView) {
     var ease = 'cubic-bezier(0.3, 0.1, 0.3, 1)';
     var shadow = document.getElementById('flipShadow');
+    var finishVisual = null;
     if (commit) {
-      commitPages(targetView);
+      // 戻りめくり(dir<0)は見た目の入れ替えを着地まで遅らせる
+      finishVisual = commitPages(targetView, dir < 0);
     } else {
       // 取り消し: 元のページを見せ直す
       var current = document.getElementById('currentPage');
@@ -1323,6 +1334,7 @@
       leaf.querySelectorAll('.leaf-shade').forEach(function (s) { s.style.opacity = '0'; });
     });
     function cleanup() {
+      if (finishVisual) finishVisual(); // 戻りめくりの見た目入れ替え（着地後）
       if (shadow) {
         shadow.style.transition = 'none';
         shadow.style.opacity = '0';
