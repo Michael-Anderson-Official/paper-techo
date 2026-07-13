@@ -279,6 +279,8 @@
     height: 28px;
     line-height: 28px;
     padding-left: 56px; /* タイトルは赤線の右、本文と同じ書き出し位置 */
+    /* 予定は「自分で転記した」もの。選んだ書き字に追従する（色で書き込みと区別） */
+    font-family: var(--write-font, 'Yomogi'), 'Klee One', cursive;
     font-size: 16px;
     color: var(--print);
     white-space: nowrap;
@@ -1178,6 +1180,38 @@
     } catch (e) { /* 容量超過などは黙って諦める（プロトタイプ） */ }
   }
 
+  // チョークの1セグメント（点描）。座標を種にした擬似乱数で粒を散らす
+  function drawChalkSegment(ctx, x1, y1, x2, y2, w, alpha) {
+    var seed = (Math.round(x1 * 10) * 73856093 ^ Math.round(y1 * 10) * 19349663 ^
+                Math.round(x2 * 10) * 83492791 ^ Math.round(y2 * 10) * 15485863) >>> 0;
+    function rnd() {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    }
+    var dist = Math.hypot(x2 - x1, y2 - y1);
+    var steps = Math.max(1, Math.round(dist / 1.4));
+    var rgb = inkStrokeRGB();
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      var cx = x1 + (x2 - x1) * t;
+      var cy = y1 + (y2 - y1) * t;
+      // 主粒（たまに欠けて「かすれ」になる）
+      if (rnd() < 0.82) {
+        ctx.fillStyle = 'rgba(' + rgb + ', ' + (alpha * (0.3 + rnd() * 0.6)).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(cx + (rnd() - 0.5) * w * 0.8, cy + (rnd() - 0.5) * w * 0.8, w * (0.22 + rnd() * 0.26), 0, 6.2832);
+        ctx.fill();
+      }
+      // 粉（まわりに散る細かい粒）
+      if (rnd() < 0.3) {
+        ctx.fillStyle = 'rgba(' + rgb + ', ' + (alpha * 0.18 * rnd()).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(cx + (rnd() - 0.5) * w * 2.2, cy + (rnd() - 0.5) * w * 2.2, w * 0.14, 0, 6.2832);
+        ctx.fill();
+      }
+    }
+  }
+
   // 鉛筆の描き味（1セグメント）。速く動かすと細く薄く、ゆっくりだと太く濃く。
   // ライブ描画と再生の両方がこれを通るので、見た目が完全に一致する
   function drawSegment(ctx, x1, y1, x2, y2, dt, eraser, scale) {
@@ -1201,9 +1235,10 @@
     var w = Math.max(1.4, 3.2 - speed * 1.6) * s;
     var alpha = Math.max(0.28, 0.62 - speed * 0.28);
     if (getPaperColor() === 'board') {
-      // チョークは鉛筆より太く、不透明寄り
-      w *= 1.25;
-      alpha = Math.min(0.85, alpha * 1.5);
+      // チョークは点描で描く: 粒のばらつきと欠け（かすれ）を再現。
+      // 散らし方は座標から決定的に作るので、開き直しても同じかすれ方になる
+      drawChalkSegment(ctx, x1, y1, x2, y2, w * 1.4, Math.min(0.9, alpha * 1.5));
+      return;
     }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
