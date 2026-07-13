@@ -1514,15 +1514,17 @@
     under.style.pointerEvents = 'none'; // 切り替え中はまだ触れない
 
     if (transitionStyle() === 'slide') {
-      // 引き違い: 行き先の板が横から滑り込んでくる（進む=右から / 戻る=左から）
+      // 連結スライド: 2枚の板が横にくっついた帯として、まとめて動く
+      // （進む=次の板が右にくっついている / 戻る=前の板が左にくっついている）
       var W = book.getBoundingClientRect().width;
-      var slider = under;
-      slider.style.transform = 'translateX(' + (dir > 0 ? W : -W) + 'px)';
+      under.style.transform = 'translateX(' + (dir > 0 ? W : -W) + 'px)';
       under.style.display = 'block';
-      slider.style.transition = 'none';
-      slider.style.zIndex = '30';
-      slider.classList.add('board-sliding');
-      return { mode: 'slide', el: slider, dir: dir, W: W };
+      current.style.transform = 'translateX(0px)';
+      [under, current].forEach(function (el) {
+        el.style.transition = 'none';
+        el.classList.add('board-sliding');
+      });
+      return { mode: 'slide', el: under, cur: current, dir: dir, W: W };
     }
 
     var leaf = document.createElement('div');
@@ -1564,8 +1566,11 @@
 
   function setLeafProgress(t, progress) {
     if (t.mode === 'slide') {
-      var x = (t.dir > 0 ? 1 : -1) * t.W * (1 - progress);
-      t.el.style.transform = 'translateX(' + x.toFixed(1) + 'px)';
+      // 帯ごと動かす: 今の板と行き先の板は常にW（画面幅）だけ離れてくっついている
+      var shift = progress * t.W;
+      var sign = t.dir > 0 ? 1 : -1;
+      t.cur.style.transform = 'translateX(' + (-sign * shift).toFixed(1) + 'px)';
+      t.el.style.transform = 'translateX(' + (sign * (t.W - shift)).toFixed(1) + 'px)';
       return;
     }
     var leaf = t.el;
@@ -1635,12 +1640,17 @@
         // スライドは両方向とも、見た目の入れ替えは板が滑り切ってから
         finishVisualSlide = commitPages(targetView, true);
       }
-      slider.style.transition = 'transform 0.42s ' + ease;
+      var sign = dir > 0 ? 1 : -1;
+      [slider, t.cur].forEach(function (el) {
+        el.style.transition = 'transform 0.42s ' + ease;
+      });
       requestAnimationFrame(function () {
         if (commit) {
-          slider.style.transform = 'translateX(0px)'; // 滑り込んで着地
+          slider.style.transform = 'translateX(0px)';               // 行き先が着地
+          t.cur.style.transform = 'translateX(' + (-sign * t.W) + 'px)'; // 今の板は反対側へ抜ける
         } else {
-          slider.style.transform = 'translateX(' + ((dir > 0 ? 1 : -1) * t.W) + 'px)'; // 元の脇へ戻る
+          slider.style.transform = 'translateX(' + (sign * t.W) + 'px)'; // 帯ごと元の位置へ
+          t.cur.style.transform = 'translateX(0px)';
         }
       });
       var cleanupSlide = function () {
