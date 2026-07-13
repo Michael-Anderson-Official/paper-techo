@@ -729,6 +729,18 @@
   body[data-paper="board"] .toolbar {
     font-family: 'Yomogi', 'Klee One', cursive;
   }
+  /* チョークのかすれ（打ち込み文字にも効く）:
+     ノイズのマスクで文字・罫線に細かい欠けを作る。地の緑は無地なので影響が見えず、
+     文字と線だけが粒状にかすれる。text-shadowはチョークの粉のにじみ */
+  body[data-paper="board"] .paper {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.32' numOctaves='4' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2.2 2.2 2.2 0 -1.35'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' fill='white'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.32' numOctaves='4' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2.2 2.2 2.2 0 -1.35'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' fill='white'/%3E%3C/svg%3E");
+    -webkit-mask-size: 160px 160px;
+    mask-size: 160px 160px;
+  }
+  body[data-paper="board"] .book {
+    text-shadow: 0 0 2px rgba(240, 238, 228, 0.28);
+  }
 
   /* 保存インジケータ（さりげなく） */
   .save-note {
