@@ -236,7 +236,7 @@
     resize: none;
     outline: none;
     /* 自分が書く欄だけ手書きフォント（設定で選べる。印刷部分はKlee Oneのまま） */
-    font-family: var(--write-font, 'Yomogi'), 'Klee One', cursive;
+    font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif;
     font-size: 19px;
     line-height: 28px;
     color: var(--ink-text);
@@ -280,7 +280,7 @@
     line-height: 28px;
     padding-left: 56px; /* タイトルは赤線の右、本文と同じ書き出し位置 */
     /* 予定は「自分で転記した」もの。選んだ書き字に追従する（色で書き込みと区別） */
-    font-family: var(--write-font, 'Yomogi'), 'Klee One', cursive;
+    font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif;
     font-size: 16px;
     color: var(--print);
     white-space: nowrap;
@@ -948,8 +948,9 @@
 
   // 書く欄のフォント。無料2種＋プレミアム（🔒・準備中。課金実装時にフォント本体を同梱する）
   var WRITE_FONTS = [
+    ['mincho', '明朝', "'Shippori Mincho'", false],
     ['yomogi', 'えんぴつ', "'Yomogi'", false],
-    ['klee', 'きれい', "'Klee One'", false],
+    ['klee', 'きれい', "'Klee One'", true],
     ['pen', 'ボールペン', "'Zen Kurenaido'", true],
     ['magic', 'マジック', "'Yusei Magic'", true],
     ['maru', 'まるもじ', "'Hachi Maru Pop'", true],
@@ -965,7 +966,7 @@
   function getWriteFont() {
     var v = localStorage.getItem('pt:font');
     var hit = WRITE_FONTS.filter(function (f) { return f[0] === v && (!f[3] || isPremiumUser()); })[0];
-    return hit ? hit[0] : 'yomogi';
+    return hit ? hit[0] : 'mincho';
   }
 
   function applyWriteFont() {
