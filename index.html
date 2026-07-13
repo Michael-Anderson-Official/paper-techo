@@ -1225,6 +1225,8 @@
     document.getElementById('tabMonth').classList.toggle('active', !isDay);
     var rpB = document.getElementById('replayBtn');
     if (rpB) rpB.style.display = isDay ? '' : 'none';
+    var tdB = document.getElementById('todayBtn');
+    if (tdB) tdB.textContent = isDay ? '今日' : '今月';
   }
 
   // ---- ページめくり ----
@@ -1635,10 +1637,16 @@
     flipTo(stepView(currentView, -1), -1);
   });
   document.getElementById('todayBtn').addEventListener('click', function () {
-    var t = toISO(new Date());
     var v = viewParts(currentView);
-    var dir = v.type === 'day' ? (t > v.iso ? 1 : -1) : -1;
-    flipTo('day:' + t, dir);
+    if (v.type === 'month') {
+      // 月カレンダーを見ているときは「今月」へ
+      var ym = toISO(new Date()).slice(0, 7);
+      var cur = v.y + '-' + String(v.m).padStart(2, '0');
+      flipTo('month:' + ym, ym > cur ? 1 : -1);
+      return;
+    }
+    var t = toISO(new Date());
+    flipTo('day:' + t, t > v.iso ? 1 : -1);
   });
   // インデックスタブ: 月のカレンダーへ／日のページへ帰る
   document.getElementById('tabMonth').addEventListener('click', function () {
