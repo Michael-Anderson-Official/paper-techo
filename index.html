@@ -814,6 +814,15 @@
     box-shadow: 0 0 26px rgba(0, 0, 0, 0.5);
   }
 
+  /* ページ再生中: 書き込み操作を一時停止（見るだけ） */
+  .book.replaying .page-text,
+  .book.replaying .page-ink {
+    pointer-events: none;
+  }
+  #replayBtn.playing {
+    background: linear-gradient(180deg, #d9e6d3, #c8dabf);
+  }
+
   /* 保存インジケータ（さりげなく） */
   .save-note {
     position: fixed;
@@ -845,6 +854,7 @@
 </div>
 
 <div class="toolbar">
+  <button id="replayBtn" type="button" aria-label="このページを再生">▶</button>
   <button id="prevBtn" type="button" aria-label="前へ">◀ 前へ</button>
   <button id="todayBtn" type="button">今日</button>
   <button id="nextBtn" type="button" aria-label="次へ">次へ ▶</button>
@@ -1459,6 +1469,8 @@
     document.getElementById('tabMonth').classList.toggle('active', !isDay);
     var penB = document.getElementById('penBtn');
     var erB = document.getElementById('eraserBtn');
+    var rpB = document.getElementById('replayBtn');
+    if (rpB) rpB.style.display = isDay ? '' : 'none';
     penB.style.display = isDay ? '' : 'none';
     if (!isDay && penMode) {
       penMode = false;
@@ -1723,9 +1735,131 @@
     }, 470) };
   }
 
-  // 進行中の着地があれば早送りして、新しいめくりを始められる状態にする。
+  // ---- ページ再生（書いた内容が1文字ずつ現れる演出） ----
+  // 予定→計画→日記の順に文字が現れ、最後に手書きの線が「実際に書いた速さ」で走る
+  // （筆跡のdt=点の間隔msを保存してあるので、それを再生する。長い休みは28msに丸める）
+  var replayState = null; // { finish }
+
+  function isReplaying() { return !!replayState; }
+
+  function finishReplayNow() {
+    if (replayState) replayState.finish();
+  }
+
+  function startReplay() {
+    if (replayState) { finishReplayNow(); return; }
+    var v = viewParts(currentView);
+    if (v.type !== 'day') return;
+    var iso = v.iso;
+    var root = document.getElementById('currentPage');
+    var book = document.getElementById('book');
+    var btn = document.getElementById('replayBtn');
+    var plan = root.querySelector('.page-text.plan');
+    var diary = root.querySelector('.page-text.diary');
+    var canvas = root.querySelector('.page-ink');
+    var evLines = Array.prototype.slice.call(root.querySelectorAll('.page-event'));
+    var ink = parseInk(iso);
+    var fullPlan = plan.value;
+    var fullDiary = diary.value;
+    if (!fullPlan && !fullDiary && evLines.length === 0 && ink.strokes.length === 0 && !ink.base) return; // 白紙は再生しない
+
+    // まっさらにする
+    plan.value = '';
+    diary.value = '';
+    evLines.forEach(function (el) { el.style.visibility = 'hidden'; });
+    var ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    var timers = [];
+    var finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      timers.forEach(clearTimeout);
+      plan.value = fullPlan;
+      diary.value = fullDiary;
+      evLines.forEach(function (el) { el.style.visibility = ''; });
+      setupInk(canvas, iso); // インクを完全な状態に描き直す
+      book.classList.remove('replaying');
+      btn.classList.remove('playing');
+      btn.textContent = '▶';
+      replayState = null;
+    }
+    replayState = { finish: finish };
+    book.classList.add('replaying');
+    btn.classList.add('playing');
+    btn.textContent = '⏹';
+
+    function at(t, fn) { timers.push(setTimeout(fn, t)); }
+
+    // 文字の速さ: 全体が長くても間延びしないように調整
+    var totalChars = fullPlan.length + fullDiary.length;
+    var typeDelay = Math.max(30, Math.min(85, Math.round(5200 / Math.max(1, totalChars))));
+
+    var t = 350;
+    // 予定が1行ずつ「印刷」される
+    evLines.forEach(function (el) {
+      at(t, function () { el.style.visibility = ''; });
+      t += 280;
+    });
+    t += 200;
+    // 計画が1文字ずつ
+    fullPlan.split('').forEach(function (ch, i) {
+      at(t, function () { plan.value = fullPlan.slice(0, i + 1); });
+      t += (ch === '\n' ? 180 : typeDelay);
+    });
+    t += 400;
+    // 日記が1文字ずつ
+    fullDiary.split('').forEach(function (ch, i) {
+      at(t, function () { diary.value = fullDiary.slice(0, i + 1); });
+      t += (ch === '\n' ? 180 : typeDelay);
+    });
+    t += 400;
+    // 手書き: 旧形式の下敷き→線を筆跡のタイミングで
+    var rect = canvas.getBoundingClientRect();
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var sx = ink.cw ? rect.width / ink.cw : 1;
+    var sy = ink.ch ? rect.height / ink.ch : 1;
+    var scale = (sx + sy) / 2;
+    function inkCtx() {
+      var c = canvas.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return c;
+    }
+    if (ink.base) {
+      at(t, function () {
+        var img = new Image();
+        img.onload = function () { if (!finished) inkCtx().drawImage(img, 0, 0, rect.width, rect.height); };
+        img.src = ink.base;
+      });
+      t += 300;
+    }
+    ink.strokes.forEach(function (stroke) {
+      var p = stroke.p;
+      for (var i = 3; i + 2 < p.length; i += 3) {
+        (function (i) {
+          at(t, function () {
+            var c = inkCtx();
+            drawSegment(c,
+              (p[i - 3] / 10) * sx, (p[i - 2] / 10) * sy,
+              (p[i] / 10) * sx, (p[i + 1] / 10) * sy,
+              p[i + 2], stroke.e === 1, scale);
+          });
+        })(i);
+        t += Math.min(28, p[i + 2]);
+      }
+      t += 260; // 筆を離す間
+    });
+    at(t + 250, finish);
+  }
+
+    // 進行中の着地があれば早送りして、新しいめくりを始められる状態にする。
   // それでも塞がっていればfalse（ドラッグ操作中など）
   function readyForFlip() {
+    finishReplayNow(); // 再生中なら即完了させてから
     if (flipping && pendingSettle) finishSettleNow();
     return !flipping;
   }
@@ -1750,6 +1884,9 @@
   // ---- 操作 ----
   document.getElementById('nextBtn').addEventListener('click', function () {
     flipTo(stepView(currentView, 1), 1);
+  });
+  document.getElementById('replayBtn').addEventListener('click', function () {
+    startReplay();
   });
   document.getElementById('prevBtn').addEventListener('click', function () {
     flipTo(stepView(currentView, -1), -1);
