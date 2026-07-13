@@ -58,10 +58,11 @@
 
 - ✅ バックアップ: 設定「データのひかえ」。pt:キーのみ対象、認証情報は書き出さない、復元はconfirm→上書き→リロード
 - ✅ プライバシーポリシー: privacy.html（メニューからリンク）。ローカル保存・Google読み取り専用・Worker上のrefresh token・広告予定を明記
-- ⬜ Capacitorネイティブ化＋フォント同梱（OFLライセンス）
-- ⬜ ネイティブ版はカレンダーをEventKitに切替（Google OAuth問題の構造的解消＋iCloud対応）。Web版はGoogle API継続
+- ✅ Capacitorネイティブ化: ios/（SPM・appId jp.tezawari.techo）＋GitHub Actions未署名ビルドCI（初回パス）。フォント同梱済み
+- ✅ ネイティブ版カレンダー=EventKit: アプリ内プラグインDeviceCalendar（DeviceCalendarPlugin.swift、MyViewControllerで登録、権限説明はInfo.plist）。JSはisNativeApp()で出し分け、設定のGoogle節はネイティブでは非表示。Web版はGoogle API継続
 - ⬜ Apple Developer登録（ユーザー側・$99/年）→ App Store Connect APIキーでCIからTestFlight
-- ⬜ ストア素材（スクショ・説明文）
+- ✅ ストア素材の下書き: store/listing.md（説明文・キーワード・スクショ構成・審査メモ）
+- ⬜ TestFlight配信ワークフロー（Developer登録後: 証明書 or App Store Connect APIキーをSecretsに）
 
 ## 未実装（製品化するなら）
 
