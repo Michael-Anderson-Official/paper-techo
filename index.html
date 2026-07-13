@@ -192,17 +192,31 @@
     display: none;
   }
   .page-event {
-    font-size: 16px;
+    position: relative;
+    height: 28px;
     line-height: 28px;
+    padding-left: 56px; /* タイトルは赤線の右、本文と同じ書き出し位置 */
+    font-size: 16px;
     color: #5d6f93;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* 時刻は赤いマージン線の左の余白に小さく（12:15 / 〜12:30 の2段） */
   .page-event .ev-time {
-    font-size: 13px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 42px;
+    height: 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+    font-size: 9.5px;
+    line-height: 11px;
+    letter-spacing: 0;
     color: #8291b0;
-    margin-right: 6px;
   }
 
   /* 手書きインクのcanvas。ペンモード中だけ操作を受ける */
@@ -1724,7 +1738,19 @@
       line.className = 'page-event';
       var t = document.createElement('span');
       t.className = 'ev-time';
-      t.textContent = ev.time;
+      var time = ev.time || '';
+      var sep = time.indexOf('〜');
+      if (sep > 0) {
+        // 「12:15〜12:30」→ 1段目「12:15」・2段目「〜12:30」
+        var l1 = document.createElement('span');
+        l1.textContent = time.slice(0, sep);
+        var l2 = document.createElement('span');
+        l2.textContent = time.slice(sep);
+        t.appendChild(l1);
+        t.appendChild(l2);
+      } else {
+        t.textContent = time; // 終日など
+      }
       line.appendChild(t);
       line.appendChild(document.createTextNode(ev.title));
       box.appendChild(line);
