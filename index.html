@@ -955,6 +955,9 @@
     <p class="settings-label" style="margin-top:16px;">Googleカレンダー</p>
     <p id="gcalStatus" class="settings-note" style="margin-top:0;"></p>
     <button id="gcalConnectBtn" type="button" class="settings-close" style="margin-top:8px;">Googleカレンダーと連携</button>
+    <p class="settings-label" style="margin-top:16px;">日記の書き出し</p>
+    <p id="diaryExportStatus" class="settings-note" style="margin-top:0;">書いた日記だけをまとめて、読みやすいテキストファイルにできます。</p>
+    <button id="diaryExportBtn" type="button" class="settings-close" style="margin-top:0;">テキストで書き出す</button>
     <p class="settings-label" style="margin-top:16px;">データのひかえ</p>
     <p id="backupStatus" class="settings-note" style="margin-top:0;">手帳の中身をファイルに保存できます。機種変や、ホーム画面のアイコンを消す前のお守りに。</p>
     <div style="display:flex; gap:8px;">
@@ -2543,6 +2546,58 @@
         });
       }
       gcalCodeClient.requestCode();
+    });
+  })();
+
+  // ---- 日記の書き出し（読みやすいテキストファイル） ----
+  (function () {
+    var exportBtn = document.getElementById('diaryExportBtn');
+    var statusEl = document.getElementById('diaryExportStatus');
+    if (!exportBtn) return;
+
+    function collectDiaryEntries() {
+      var re = /^pt:(\d{4}-\d{2}-\d{2}):diary$/;
+      var entries = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        var m = k && k.match(re);
+        if (!m) continue;
+        var text = (localStorage.getItem(k) || '').trim();
+        if (!text) continue;
+        entries.push({ iso: m[1], text: text });
+      }
+      entries.sort(function (a, b) { return a.iso < b.iso ? -1 : (a.iso > b.iso ? 1 : 0); });
+      return entries;
+    }
+
+    function buildDiaryText(entries) {
+      return entries.map(function (e) {
+        var d = fromISO(e.iso);
+        var holiday = HOLIDAYS[e.iso] || '';
+        var rokuyo = getRokuyoEnabled() ? rokuyoOf(e.iso) : '';
+        var header = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + DOW[d.getDay()] + '）' +
+          (holiday ? '　' + holiday : '') + (rokuyo ? '　' + rokuyo : '');
+        return header + '\n' + e.text;
+      }).join('\n\n');
+    }
+
+    exportBtn.addEventListener('click', function () {
+      var entries = collectDiaryEntries();
+      if (entries.length === 0) {
+        if (statusEl) statusEl.textContent = 'まだ書いた日記がありません。';
+        return;
+      }
+      var text = buildDiaryText(entries);
+      var blob = new Blob([text], { type: 'text/plain' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '手ざわり手帳-日記-' + toISO(new Date()) + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      if (statusEl) statusEl.textContent = entries.length + '日ぶんの日記を書き出しました。';
     });
   })();
 

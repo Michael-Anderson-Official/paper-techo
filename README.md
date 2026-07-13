@@ -66,6 +66,7 @@
 ## App Store準備（2026-07-13着手）
 
 - ✅ バックアップ: 設定「データのひかえ」。pt:キーのみ対象、認証情報は書き出さない、復元はconfirm→上書き→リロード
+- ✅ 日記の書き出し（2026-07-14）: 設定「日記の書き出し」。pt:ISO:diaryのみ対象（空日記・計画のみの日は除外）、日付昇順で読みやすいテキスト（年月日＋曜日＋祝日/六曜のヘッダー）にまとめてtext/plainダウンロード。バックアップのJSON（機種変・復元用）とは別に、読む・保存する・人に見せるための書き出し
 - ✅ プライバシーポリシー: privacy.html（メニューからリンク）。ローカル保存・Google読み取り専用・Worker上のrefresh token・広告予定を明記
 - ✅ Capacitorネイティブ化: ios/（SPM・appId jp.tezawari.techo）＋GitHub Actions未署名ビルドCI（初回パス）。フォント同梱済み
 - ✅ ネイティブ版カレンダー=EventKit: アプリ内プラグインDeviceCalendar（DeviceCalendarPlugin.swift、MyViewControllerで登録、権限説明はInfo.plist）。JSはisNativeApp()で出し分け、設定のGoogle節はネイティブでは非表示。Web版はGoogle API継続
