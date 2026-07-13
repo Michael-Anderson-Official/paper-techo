@@ -202,22 +202,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* 時刻は赤いマージン線の左の余白に小さく（12:15 / 〜12:30 の2段） */
+  /* 時刻は赤いマージン線の左の余白に小さく。
+     上段（開始時刻）は左寄せ、下段（〜終了時刻）は右寄せの筆記スタイル */
   .page-event .ev-time {
     position: absolute;
-    left: 0;
+    left: 14px; /* 綴じステッチ(10px)と赤線(46px)の間に収める */
     top: 0;
-    width: 42px;
+    width: 30px;
     height: 28px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: flex-end;
     font-size: 9.5px;
     line-height: 11px;
     letter-spacing: 0;
     color: #8291b0;
   }
+  .page-event .ev-time span:first-child { align-self: flex-start; }
+  .page-event .ev-time span + span { align-self: flex-end; }
 
   /* 手書きインクのcanvas。ペンモード中だけ操作を受ける */
   .page-ink {
@@ -1749,7 +1751,9 @@
         t.appendChild(l1);
         t.appendChild(l2);
       } else {
-        t.textContent = time; // 終日など
+        var single = document.createElement('span');
+        single.textContent = time; // 終日など（1段・左寄せ）
+        t.appendChild(single);
       }
       line.appendChild(t);
       line.appendChild(document.createTextNode(ev.title));
