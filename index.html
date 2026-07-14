@@ -531,6 +531,108 @@
     color: var(--ink-soft);
   }
 
+  /* 週の見開き。日ごとに横1行、左に日付、右に予定を並べる */
+  .week-grid {
+    position: absolute;
+    top: 96px;
+    left: 18px;
+    right: 14px;
+    bottom: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+  .wg-row {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+    border-top: 1px solid var(--mg-border);
+    cursor: pointer;
+    position: relative;
+  }
+  .wg-row:last-child { border-bottom: 1px solid var(--mg-border); }
+  .wg-date {
+    flex: none;
+    width: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+  }
+  .wg-date .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--ink-text);
+  }
+  .wg-date .num.dow-sun { color: var(--sun); }
+  .wg-date .num.dow-sat { color: var(--sat); }
+  .wg-date .num.today {
+    border: 2px solid var(--today-ring);
+    border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
+    transform: rotate(-4deg);
+  }
+  .wg-dow {
+    font-size: 10.5px;
+    color: var(--ink-soft);
+  }
+  .wg-dow.dow-sun { color: var(--sun); }
+  .wg-dow.dow-sat { color: var(--sat); }
+  .wg-holiday {
+    font-size: 8.5px;
+    line-height: 1.15;
+    color: var(--sun);
+    text-align: center;
+    max-width: 52px;
+  }
+  .wg-rokuyo {
+    font-size: 8.5px;
+    line-height: 1.15;
+    color: var(--ink-soft);
+  }
+  .wg-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 2px 20px 2px 8px;
+  }
+  .wg-ev {
+    font-size: 13px;
+    color: var(--print);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wg-ev .wg-ev-time {
+    color: var(--print-soft);
+    font-size: 11px;
+    margin-right: 6px;
+  }
+  .wg-ev.more { color: var(--ink-soft); }
+  .wg-empty {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  /* 書き込みがある日: 鉛筆の短い線 */
+  .wg-mark {
+    position: absolute;
+    right: 4px;
+    bottom: 6px;
+    transform: rotate(-2deg);
+    width: 16px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--mark);
+  }
+
   /* ページ右下の「つまみ」ヒント */
   .corner-hint {
     position: absolute;
@@ -622,6 +724,11 @@
       top: calc(96px + env(safe-area-inset-top, 0px));
       /* ツールバー64px + 選択日パネル146px + すき間8px */
       bottom: calc(218px + env(safe-area-inset-bottom, 0px));
+    }
+    .week-grid {
+      top: calc(96px + env(safe-area-inset-top, 0px));
+      /* ツールバーの上まで（月と違い選択日パネルは無い） */
+      bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     }
   }
 
@@ -905,6 +1012,7 @@
   <!-- 右端のインデックスタブ（本物の手帳の見出しタブ） -->
   <div class="book-tabs">
     <button id="tabDay" type="button" class="book-tab active" aria-label="日のページ">日</button>
+    <button id="tabWeek" type="button" class="book-tab" aria-label="週の見開き">週</button>
     <button id="tabMonth" type="button" class="book-tab" aria-label="月のカレンダー">月</button>
   </div>
 </div>
@@ -998,7 +1106,7 @@
   }
 
   var currentISO = toISO(new Date());
-  // ビューは 'day:YYYY-MM-DD'（日のページ）か 'month:YYYY-MM'（月のカレンダー）
+  // ビューは 'day:YYYY-MM-DD'（日のページ）'week:YYYY-MM-DD'（週の見開き・その週の始まりの日）'month:YYYY-MM'（月のカレンダー）
   var currentView = 'day:' + currentISO;
 
   function viewParts(view) {
@@ -1007,13 +1115,17 @@
       var ym = p[1].split('-');
       return { type: 'month', y: +ym[0], m: +ym[1] };
     }
+    if (p[0] === 'week') {
+      return { type: 'week', iso: p[1] };
+    }
     return { type: 'day', iso: p[1] };
   }
 
-  // 前後のページ（日ページなら前後の日、月ページなら前後の月）
+  // 前後のページ（日ページなら前後の日、週なら前後の週、月ページなら前後の月）
   function stepView(view, dir) {
     var v = viewParts(view);
     if (v.type === 'day') return 'day:' + addDays(v.iso, dir);
+    if (v.type === 'week') return 'week:' + addDays(v.iso, dir * 7);
     var m = v.m + dir, y = v.y;
     if (m < 1) { m = 12; y -= 1; }
     if (m > 12) { m = 1; y += 1; }
@@ -1025,10 +1137,17 @@
       (localStorage.getItem(keyDiary(iso)) || '').trim());
   }
 
-  // 週の始まり（0=日〜6=土）。月のカレンダーの列順に効く
+  // 週の始まり（0=日〜6=土）。月のカレンダーの列順・週見開きの範囲に効く
   function getWeekStart() {
     var v = parseInt(localStorage.getItem('pt:weekStart'), 10);
     return (v >= 0 && v <= 6) ? v : 0;
+  }
+
+  // isoを含む週の始まりの日（設定の週の始まりに追従）。週ビューの正規化に使う
+  function weekStartISO(iso) {
+    var d = fromISO(iso);
+    var diff = (d.getDay() - getWeekStart() + 7) % 7;
+    return addDays(iso, -diff);
   }
 
   // ---- 暦（祝日・六曜） ----
@@ -1207,6 +1326,16 @@
       body.appendChild(divider);
       body.appendChild(makeTextarea('diary', keyDiary(iso), 'きょうの日記…'));
       frag.appendChild(body);
+    } else if (v.type === 'week') {
+      var wStart = fromISO(v.iso);
+      var wEnd = fromISO(addDays(v.iso, 6));
+      var rangeStr = (wStart.getMonth() + 1) + '/' + wStart.getDate() + '〜' +
+        (wEnd.getMonth() !== wStart.getMonth() ? (wEnd.getMonth() + 1) + '/' : '') + wEnd.getDate();
+      head.innerHTML =
+        '<span class="big">' + rangeStr + '</span>' +
+        '<span class="small">' + warekiOf(wStart) + ' ' + wStart.getFullYear() + '</span>';
+      frag.appendChild(head);
+      frag.appendChild(buildWeekGrid(v.iso, interactive));
     } else {
       var first = new Date(v.y, v.m - 1, 1);
       head.innerHTML =
@@ -1378,28 +1507,122 @@
     return grid;
   }
 
+  // 週の見開き。startIsoからの7日を横1行ずつ並べる。タップでその日のページへ（すでに情報は出ているので1回タップで直行）
+  function buildWeekGrid(startIso, interactive) {
+    var grid = document.createElement('div');
+    grid.className = 'week-grid';
+    var todayISO = toISO(new Date());
+    var rokuyoOn = getRokuyoEnabled();
+    for (var i = 0; i < 7; i++) {
+      (function (i) {
+        var iso = addDays(startIso, i);
+        var d = fromISO(iso);
+        var holiday = HOLIDAYS[iso] || '';
+        var row = document.createElement('div');
+        row.className = 'wg-row';
+
+        var dateCol = document.createElement('div');
+        dateCol.className = 'wg-date';
+        var num = document.createElement('span');
+        num.className = ('num ' + (holiday ? 'dow-sun' : dowClass(d)) + (iso === todayISO ? ' today' : '')).trim();
+        num.textContent = d.getDate();
+        dateCol.appendChild(num);
+        var dowLabel = document.createElement('span');
+        dowLabel.className = ('wg-dow ' + (holiday ? 'dow-sun' : dowClass(d))).trim();
+        dowLabel.textContent = DOW[d.getDay()];
+        dateCol.appendChild(dowLabel);
+        if (holiday) {
+          var hEl = document.createElement('div');
+          hEl.className = 'wg-holiday';
+          hEl.textContent = holiday;
+          dateCol.appendChild(hEl);
+        } else if (rokuyoOn) {
+          var rk = rokuyoOf(iso);
+          if (rk) {
+            var rkEl = document.createElement('div');
+            rkEl.className = 'wg-rokuyo';
+            rkEl.textContent = rk;
+            dateCol.appendChild(rkEl);
+          }
+        }
+        row.appendChild(dateCol);
+
+        var body = document.createElement('div');
+        body.className = 'wg-body';
+        var cachedEv = readCachedEvents(iso);
+        var list = cachedEv ? cachedEv.list : [];
+        if (list.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'wg-empty';
+          empty.textContent = '予定はありません';
+          body.appendChild(empty);
+        } else {
+          var shown = list.length > 3 ? list.slice(0, 2) : list;
+          shown.forEach(function (ev) {
+            var line = document.createElement('div');
+            line.className = 'wg-ev';
+            var t = document.createElement('span');
+            t.className = 'wg-ev-time';
+            t.textContent = ev.time;
+            line.appendChild(t);
+            var titleEl = document.createElement('span');
+            if (ev.color) titleEl.style.color = ev.color;
+            titleEl.textContent = ev.title;
+            line.appendChild(titleEl);
+            body.appendChild(line);
+          });
+          if (list.length > shown.length) {
+            var more = document.createElement('div');
+            more.className = 'wg-ev more';
+            more.textContent = 'ほか ' + (list.length - shown.length) + ' 件';
+            body.appendChild(more);
+          }
+        }
+        row.appendChild(body);
+
+        if (hasEntry(iso)) {
+          var mark = document.createElement('span');
+          mark.className = 'wg-mark';
+          row.appendChild(mark);
+        }
+
+        if (interactive) {
+          row.addEventListener('click', function () {
+            flipTo('day:' + iso, 1);
+          });
+        }
+        grid.appendChild(row);
+      })(i);
+    }
+    return grid;
+  }
+
   // ---- ページの描画 ----
   // silentChrome: めくり先を事前に描くとき、タブなどの見た目はまだ切り替えない
   function renderPage(el, view, interactive, silentChrome) {
     el.innerHTML = '';
-    el.classList.toggle('is-month', viewParts(view).type === 'month');
+    var vType = viewParts(view).type;
+    el.classList.toggle('is-month', vType === 'month' || vType === 'week');
     var built = buildPageContent(view, interactive);
     el.appendChild(built.frag);
     if (built.iso) loadDayEvents(el, built.iso); // カレンダーの予定（キャッシュ即表示＋裏で更新）
     var mv = viewParts(view);
     if (mv.type === 'month' && interactive) loadMonthEvents(mv.y, mv.m, el);
+    if (mv.type === 'week' && interactive) loadWeekEvents(mv.iso, el);
     if (interactive && !silentChrome) updateChrome(view);
   }
 
-  // タブの選択状態と鉛筆ボタンの出し分け（月のページに鉛筆は無い）
+  // タブの選択状態と鉛筆ボタンの出し分け（月・週のページに鉛筆は無い）
   function updateChrome(view) {
-    var isDay = viewParts(view).type === 'day';
+    var type = viewParts(view).type;
+    var isDay = type === 'day';
     document.getElementById('tabDay').classList.toggle('active', isDay);
-    document.getElementById('tabMonth').classList.toggle('active', !isDay);
+    document.getElementById('tabWeek').classList.toggle('active', type === 'week');
+    document.getElementById('tabMonth').classList.toggle('active', type === 'month');
     var rpB = document.getElementById('replayBtn');
     if (rpB) rpB.style.display = isDay ? '' : 'none';
     var tdB = document.getElementById('todayBtn');
-    if (tdB) tdB.textContent = isDay ? '今日' : '今月';
+    if (tdB) tdB.textContent = isDay ? '今日' : (type === 'week' ? '今週' : '今月');
   }
 
   // ---- ページめくり ----
@@ -1819,13 +2042,23 @@
       flipTo('month:' + ym, ym > cur ? 1 : -1);
       return;
     }
+    if (v.type === 'week') {
+      // 週の見開きを見ているときは「今週」へ
+      var thisWeekStart = weekStartISO(currentISO);
+      flipTo('week:' + thisWeekStart, thisWeekStart > v.iso ? 1 : -1);
+      return;
+    }
     var t = toISO(new Date());
     flipTo('day:' + t, t > v.iso ? 1 : -1);
   });
-  // インデックスタブ: 月のカレンダーへ／日のページへ帰る
+  // インデックスタブ: 月のカレンダーへ／週の見開きへ／日のページへ帰る
   document.getElementById('tabMonth').addEventListener('click', function () {
     statBump('month');
     flipTo('month:' + currentISO.slice(0, 7), 1);
+  });
+  document.getElementById('tabWeek').addEventListener('click', function () {
+    statBump('week');
+    flipTo('week:' + weekStartISO(currentISO), 1);
   });
   document.getElementById('tabDay').addEventListener('click', function () {
     // 月ビューで日を選んでいれば、その日を開く（選んでいなければ元いた日へ）
@@ -2369,12 +2602,32 @@
         localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
       }
       localStorage.setItem('pt:events-month:' + ym, String(Date.now()));
-      // まだこの月を見ていたら描き直す
+      // まだこの月（または、この月にかかる週）を見ていたら描き直す
       var v = viewParts(currentView);
-      if (rootEl && rootEl.isConnected && v.type === 'month' && v.y === y && v.m === m) {
+      var stillLooking = v.type === 'month' && v.y === y && v.m === m;
+      if (!stillLooking && v.type === 'week') {
+        for (var wi = 0; wi < 7; wi++) {
+          var wd = fromISO(addDays(v.iso, wi));
+          if (wd.getFullYear() === y && wd.getMonth() + 1 === m) { stillLooking = true; break; }
+        }
+      }
+      if (rootEl && rootEl.isConnected && stillLooking) {
         renderPage(document.getElementById('currentPage'), currentView, true);
       }
     }).catch(function () { /* オフライン等は静かに */ });
+  }
+
+  // 週の見開き。またがる月ぶんだけloadMonthEventsを呼んで日別キャッシュを温める（取得・保存の仕組みは月と共通）
+  function loadWeekEvents(startIso, rootEl) {
+    var seen = {};
+    for (var i = 0; i < 7; i++) {
+      var d = fromISO(addDays(startIso, i));
+      var y = d.getFullYear(), m = d.getMonth() + 1;
+      var key = y + '-' + m;
+      if (seen[key]) continue;
+      seen[key] = true;
+      loadMonthEvents(y, m, rootEl);
+    }
   }
 
   // ---- メニューと設定 ----
@@ -2406,8 +2659,12 @@
         b.addEventListener('click', function () {
           localStorage.setItem('pt:weekStart', String(i));
           renderChips();
-          // 月のカレンダーを開いていたら並びを描き直す
-          if (viewParts(currentView).type === 'month') {
+          // 月のカレンダーを開いていたら並びを、週の見開きを開いていたら範囲を描き直す
+          var vp = viewParts(currentView);
+          if (vp.type === 'month') {
+            renderPage(document.getElementById('currentPage'), currentView, true);
+          } else if (vp.type === 'week') {
+            currentView = 'week:' + weekStartISO(vp.iso);
             renderPage(document.getElementById('currentPage'), currentView, true);
           }
           flashSaved();
@@ -2694,6 +2951,12 @@
     var v = viewParts(currentView);
     if (v.type === 'day') loadDayEvents(el, v.iso, true);
     else if (v.type === 'month') loadMonthEvents(v.y, v.m, el, true);
+    else if (v.type === 'week') {
+      for (var wi = 0; wi < 7; wi++) {
+        var wd = fromISO(addDays(v.iso, wi));
+        loadMonthEvents(wd.getFullYear(), wd.getMonth() + 1, el, true);
+      }
+    }
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') refreshCurrentViewFromForeground();
