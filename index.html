@@ -403,6 +403,46 @@
   .leaf.auto-fwd .leaf-shade, .leaf.auto-back .leaf-shade { animation: shadePulse 0.46s ease; }
   #flipShadow.pulse { animation: shadePulse 0.46s ease; }
 
+  /* 角カール（ドラッグ中のみ）: 触った角から対角線で三角に裂けて、その部分だけが先にめくれる。
+     残りのページはcurrentPageのまま静止している。四隅とも同じ構造で、
+     クリップの三角形と回転軸だけがJS側で角ごとに変わる */
+  /* clip-pathと3D回転を同じ要素に同時にかけるとヘッドレスChromium等で描画が崩れるため、
+     クリップ（外側・2D）と回転（内側・3D）を別要素に分ける */
+  .corner-flap {
+    position: absolute;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 32;
+    perspective: 1600px; /* .bookと同じ奥行き感。preserve-3dの継承を待たず自前で持つ */
+  }
+  .corner-flap-inner {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+  }
+  .corner-flap .face {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .corner-flap .holder {
+    position: absolute;
+  }
+  .corner-flap .face.back {
+    background:
+      url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+      linear-gradient(105deg, var(--paper-back-1), var(--paper-back-2) 40%, var(--paper-back-3));
+  }
+  .corner-flap-shade {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(var(--shade-rgb), 0.3);
+  }
+
   /* 右端のインデックスタブ */
   .book-tabs {
     position: absolute;
@@ -2049,13 +2089,116 @@
     flipTo('day:' + target, target > currentISO ? 1 : -1);
   });
 
+  // ---- 角カール（紙テーマのドラッグ中だけ）----
+  // 触った半分（上/下）で、対角線でめくれる角を選ぶ。折り目は正方形の対角線に固定し、
+  // 伸びる辺の長さL=進み具合×ページ幅で育てる（Lはページ幅を超えないので必ず中に収まる）。
+  // 残りのページ（currentPage）はそのまま静止していて、角の三角形部分だけが手前に浮く
+
+  // 角ごとの三角形（%指定・箱のどこを覆うか）と回転軸（対角線の向き、box中心を通る）
+  var CORNER_DEF = {
+    tr: { clip: '0% 0%, 100% 0%, 100% 100%', axis: [1, 1] },
+    br: { clip: '0% 100%, 100% 100%, 100% 0%', axis: [1, -1] },
+    tl: { clip: '0% 0%, 100% 0%, 0% 100%', axis: [1, -1] },
+    bl: { clip: '0% 100%, 100% 100%, 0% 0%', axis: [1, 1] }
+  };
+
+  function cornerFor(dir, half) {
+    // dir>0: 右端をつまんで進める→右側の角。dir<0: 左端から戻す→左側の角
+    if (dir > 0) return half === 'top' ? 'tr' : 'br';
+    return half === 'top' ? 'tl' : 'bl';
+  }
+
+  function prepareCornerFlap(dir, half) {
+    var book = document.getElementById('book');
+    var current = document.getElementById('currentPage');
+    var rect = book.getBoundingClientRect();
+    var corner = cornerFor(dir, half);
+    var def = CORNER_DEF[corner];
+
+    // 外側=クリップ専用（2D・変形なし）、内側=3D回転専用。
+    // 同じ要素にclip-pathと3D回転を同時にかけると描画が崩れることがあるため分離する
+    var flap = document.createElement('div');
+    flap.className = 'corner-flap';
+    flap.style.clipPath = 'polygon(' + def.clip + ')';
+
+    var inner = document.createElement('div');
+    inner.className = 'corner-flap-inner';
+    inner.style.transformOrigin = '50% 50%';
+
+    var front = document.createElement('div');
+    front.className = 'face front';
+    var holder = document.createElement('div');
+    holder.className = 'holder';
+    var clone = current.cloneNode(true);
+    clone.id = '';
+    clone.style.display = 'block';
+    clone.style.visibility = 'visible';
+    holder.appendChild(clone);
+    front.appendChild(holder);
+    var shade = document.createElement('div');
+    shade.className = 'corner-flap-shade';
+    front.appendChild(shade);
+
+    var back = document.createElement('div');
+    back.className = 'face back';
+    back.style.transform = 'rotate3d(' + def.axis[0] + ',' + def.axis[1] + ',0,180deg)';
+
+    inner.appendChild(front);
+    inner.appendChild(back);
+    flap.appendChild(inner);
+    book.appendChild(flap);
+
+    return { corner: corner, axis: def.axis, el: flap, inner: inner, holder: holder, shade: shade, W: rect.width, H: rect.height };
+  }
+
+  function setCornerFlapProgress(t, progress) {
+    var L = Math.max(1, progress * t.W); // 0だとclip-pathが潰れるので最小1pxは確保
+    var left, top;
+    if (t.corner === 'tr') { left = t.W - L; top = 0; }
+    else if (t.corner === 'br') { left = t.W - L; top = t.H - L; }
+    else if (t.corner === 'tl') { left = 0; top = 0; }
+    else { left = 0; top = t.H - L; }
+    t.el.style.left = left + 'px';
+    t.el.style.top = top + 'px';
+    t.el.style.width = L + 'px';
+    t.el.style.height = L + 'px';
+    t.holder.style.left = (-left) + 'px';
+    t.holder.style.top = (-top) + 'px';
+    t.holder.style.width = t.W + 'px';
+    t.holder.style.height = t.H + 'px';
+    // 対角線まわりに回す。90度(真横向き)に近づくとほぼ見えなくなってしまうので、
+    // 80度で頭打ちにして最後まで見える状態を保つ（伸びる分は引き続きLで大きくなる）
+    var angle = Math.min(80, progress * 140);
+    t.inner.style.transform = 'rotate3d(' + t.axis[0] + ',' + t.axis[1] + ',0,' + angle.toFixed(2) + 'deg)';
+    t.shade.style.opacity = Math.min(0.9, progress * 1.2).toFixed(3);
+  }
+
+  function removeCornerFlap(t) {
+    if (t && t.el && t.el.parentNode) t.el.parentNode.removeChild(t.el);
+  }
+
+  // 指を離して取り消すとき: 平らに戻しながらフェードアウトして片付ける
+  function settleCornerFlap(t) {
+    var el = t.el;
+    t.inner.style.transition = 'transform 0.28s cubic-bezier(0.3, 0.1, 0.3, 1)';
+    el.style.transition = 'opacity 0.28s ease-out';
+    requestAnimationFrame(function () {
+      t.inner.style.transform = 'rotate3d(' + t.axis[0] + ',' + t.axis[1] + ',0,0deg)';
+      el.style.opacity = '0';
+    });
+    setTimeout(function () {
+      removeCornerFlap(t);
+      flipping = false;
+    }, 300);
+  }
+
   // 指の動きに追従するめくり。
   // 横に動き始めた瞬間に1枚つくり、指のXに合わせて角度を更新。
   // 離したら「4割超えた or フリックの勢い」でめくり切る、それ以外は元に戻る
   (function () {
     var book = document.getElementById('book');
     var startX = null, startY = null;
-    var active = null; // { leaf, dir, targetISO, width, progress, lastX, lastT, vel }
+    var active = null; // { dir, targetView, isCorner, turn|corner, width, progress, lastX, lastT, vel }
     var rafPending = false;
 
     // pointermoveはブラウザによっては1フレームに複数回・ばらばらの間隔で来るので、
@@ -2065,7 +2208,9 @@
       rafPending = true;
       requestAnimationFrame(function () {
         rafPending = false;
-        if (active) setLeafProgress(active.turn, active.progress);
+        if (!active) return;
+        if (active.isCorner) setCornerFlapProgress(active.corner, active.progress);
+        else setLeafProgress(active.turn, active.progress);
       });
     }
 
@@ -2088,10 +2233,20 @@
         var dir = dx < 0 ? 1 : -1;
         var targetView = stepView(currentView, dir);
         flipping = true;
+        // 紙テーマは触った半分（上/下）で角カール。黒板・電光掲示板は従来の引き違いスライド
+        var isCorner = transitionStyle() === 'flip';
+        var cornerFlap = null;
+        if (isCorner) {
+          var bookRect = book.getBoundingClientRect();
+          var half = (startY - bookRect.top) < bookRect.height / 2 ? 'top' : 'bottom';
+          cornerFlap = prepareCornerFlap(dir, half);
+        }
         active = {
           dir: dir,
           targetView: targetView,
-          turn: prepareLeaf(dir, targetView),
+          isCorner: isCorner,
+          turn: isCorner ? null : prepareLeaf(dir, targetView),
+          corner: cornerFlap,
           width: book.getBoundingClientRect().width,
           progress: 0,
           lastX: ev.clientX,
@@ -2115,12 +2270,24 @@
       if (!active) return;
       // 直前のpointermoveぶんがまだrAF待ちで未反映のことがあるので、
       // 着地アニメを組む前に指を離した瞬間の位置を確実に描画へ反映しておく
-      setLeafProgress(active.turn, active.progress);
+      if (active.isCorner) setCornerFlapProgress(active.corner, active.progress);
+      else setLeafProgress(active.turn, active.progress);
       // フリック: めくる方向への勢いなら進み具合が浅くても確定、逆方向なら取り消し
       var flingCommit = active.dir > 0 ? active.vel < -0.35 : active.vel > 0.35;
       var flingCancel = active.dir > 0 ? active.vel > 0.35 : active.vel < -0.35;
       var commit = flingCommit || (active.progress > 0.4 && !flingCancel);
-      settleLeaf(active.turn, commit, active.targetView);
+      if (active.isCorner) {
+        if (commit) {
+          // 角カールの見た目はここで片付けて、実際のページ切り替えは通常のめくりに引き継ぐ
+          removeCornerFlap(active.corner);
+          flipping = false;
+          flipTo(active.targetView, active.dir);
+        } else {
+          settleCornerFlap(active.corner);
+        }
+      } else {
+        settleLeaf(active.turn, commit, active.targetView);
+      }
       active = null;
     }
     book.addEventListener('pointerup', release);
