@@ -302,6 +302,16 @@
     letter-spacing: 0.12em;
     color: var(--divider-label);
   }
+  /* 日記の開閉（他人に予定を見せるとき、日記を隠せる） */
+  .page-divider.diary-toggle { cursor: pointer; }
+  .diary-hint {
+    position: absolute;
+    right: 16px;
+    bottom: 3px;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .page-body.diary-collapsed .page-text.diary { display: none; }
 
   /* その日の予定の1行（手帳に印刷されている風）。計画欄(.plan-area)の中に並ぶ */
   .page-event {
@@ -1445,11 +1455,14 @@
       body.appendChild(planArea);
 
       var divider = document.createElement('div');
-      divider.className = 'page-divider';
+      divider.className = 'page-divider diary-toggle';
       var dLabel = document.createElement('span');
       dLabel.className = 'label';
       dLabel.textContent = '日記';
       divider.appendChild(dLabel);
+      var diaryHint = document.createElement('span');
+      diaryHint.className = 'diary-hint';
+      divider.appendChild(diaryHint);
       body.appendChild(divider);
 
       var diaryTa = document.createElement('textarea');
@@ -1468,6 +1481,22 @@
         diaryTa.tabIndex = -1;
       }
       body.appendChild(diaryTa);
+
+      // 日記は既定で閉じる（予定を見せるとき、日記が最初から隠れているように）。
+      // 「日記」の区切りをタップで開閉する
+      var diaryOpen = false;
+      function applyDiaryState() {
+        body.classList.toggle('diary-collapsed', !diaryOpen);
+        diaryHint.textContent = diaryOpen ? '▼ とじる' : '▶ ひらく';
+      }
+      if (interactive) {
+        divider.addEventListener('click', function () {
+          diaryOpen = !diaryOpen;
+          applyDiaryState();
+          if (diaryOpen) setTimeout(function () { diaryTa.focus(); }, 60);
+        });
+      }
+      applyDiaryState();
       frag.appendChild(body);
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
