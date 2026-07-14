@@ -1715,7 +1715,7 @@
     var dir = t.dir;
     var angle = dir > 0 ? -progress * 178 : -178 + progress * 178;
     var wave = Math.sin(progress * Math.PI);
-    var bend = (dir > 0 ? -1 : 1) * LEAF_BEND_DEG * wave;
+    var bend = (dir > 0 ? 1 : -1) * LEAF_BEND_DEG * wave;
     leaf.style.transform = 'rotateY(' + angle + 'deg)';
     var hr = leaf.querySelector('.leaf-half.hr');
     if (hr) hr.style.transform = 'rotateY(' + bend.toFixed(2) + 'deg)';
