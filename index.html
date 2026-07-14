@@ -435,31 +435,12 @@
       url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
       linear-gradient(105deg, var(--paper-back-1), var(--paper-back-2) 40%, var(--paper-back-3));
   }
-  /* 紙の裏の丸まり感: 折り目まわりを明るく、めくれた先ほど暗く（円柱の陰影っぽく）。
-     JS側で角ごとにgradientの向きを差し込む */
-  .corner-flap .face.back::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--curl-shade, none);
-  }
   .corner-flap-shade {
     position: absolute;
     inset: 0;
     opacity: 0;
     pointer-events: none;
-    /* 表側（下のページに触れている面）の陰影も、折り目を濃く先を淡くして丸みを出す */
-    background: var(--curl-front-shade, rgba(var(--shade-rgb), 0.3));
-  }
-  /* めくれた角が下のページに落とすやわらかい影（浮いて見えるように） */
-  .corner-flap-cast {
-    position: absolute;
-    pointer-events: none;
-    z-index: 31; /* ページ(下)と角(32)の間 */
-    opacity: 0;
-    background: radial-gradient(closest-side at var(--cast-origin, 100% 0%),
-      rgba(var(--shade-rgb), 0.42), rgba(var(--shade-rgb), 0.16) 55%, transparent 78%);
-    filter: blur(3px);
+    background: rgba(var(--shade-rgb), 0.3);
   }
 
   /* 右端のインデックスタブ */
@@ -2113,13 +2094,12 @@
   // 伸びる辺の長さL=進み具合×ページ幅で育てる（Lはページ幅を超えないので必ず中に収まる）。
   // 残りのページ（currentPage）はそのまま静止していて、角の三角形部分だけが手前に浮く
 
-  // 角ごとの三角形（%指定・箱のどこを覆うか）と回転軸（対角線の向き、box中心を通る）。
-  // tipDeg=めくれた先端の向き（円柱の陰影づけに使う）、cast=下のページに落とす影の中心
+  // 角ごとの三角形（%指定・箱のどこを覆うか）と回転軸（対角線の向き、box中心を通る）
   var CORNER_DEF = {
-    tr: { clip: '0% 0%, 100% 0%, 100% 100%', axis: [1, 1], tipDeg: 45, cast: '100% 0%' },
-    br: { clip: '0% 100%, 100% 100%, 100% 0%', axis: [1, -1], tipDeg: 135, cast: '100% 100%' },
-    tl: { clip: '0% 0%, 100% 0%, 0% 100%', axis: [1, -1], tipDeg: 315, cast: '0% 0%' },
-    bl: { clip: '0% 100%, 100% 100%, 0% 0%', axis: [1, 1], tipDeg: 225, cast: '0% 0%' }
+    tr: { clip: '0% 0%, 100% 0%, 100% 100%', axis: [1, 1] },
+    br: { clip: '0% 100%, 100% 100%, 100% 0%', axis: [1, -1] },
+    tl: { clip: '0% 0%, 100% 0%, 0% 100%', axis: [1, -1] },
+    bl: { clip: '0% 100%, 100% 100%, 0% 0%', axis: [1, 1] }
   };
 
   function cornerFor(dir, half) {
@@ -2134,12 +2114,6 @@
     var rect = book.getBoundingClientRect();
     var corner = cornerFor(dir, half);
     var def = CORNER_DEF[corner];
-
-    // 下のページに落とす影（浮遊感）。角(flap)より下に敷く
-    var cast = document.createElement('div');
-    cast.className = 'corner-flap-cast';
-    cast.style.clipPath = 'polygon(' + def.clip + ')';
-    cast.style.setProperty('--cast-origin', def.cast);
 
     // 外側=クリップ専用（2D・変形なし）、内側=3D回転専用。
     // 同じ要素にclip-pathと3D回転を同時にかけると描画が崩れることがあるため分離する
@@ -2163,26 +2137,18 @@
     front.appendChild(holder);
     var shade = document.createElement('div');
     shade.className = 'corner-flap-shade';
-    // 表面（下のページ側）の陰影: めくれた先端を濃く、折り目側を淡く＝丸みを演出
-    shade.style.setProperty('--curl-front-shade',
-      'linear-gradient(' + def.tipDeg + 'deg, transparent 35%, rgba(var(--shade-rgb),0.32))');
     front.appendChild(shade);
 
     var back = document.createElement('div');
     back.className = 'face back';
     back.style.transform = 'rotate3d(' + def.axis[0] + ',' + def.axis[1] + ',0,180deg)';
-    // 裏面の丸まり: 先端ほど暗く（円柱状の陰影）＋折り目寄りにハイライト
-    back.style.setProperty('--curl-shade',
-      'linear-gradient(' + def.tipDeg + 'deg, rgba(255,255,255,0.10) 15%, transparent 45%, rgba(var(--shade-rgb),0.3))');
 
     inner.appendChild(front);
     inner.appendChild(back);
     flap.appendChild(inner);
-    book.appendChild(cast);
     book.appendChild(flap);
 
-    return { corner: corner, axis: def.axis, el: flap, inner: inner, holder: holder,
-             shade: shade, cast: cast, W: rect.width, H: rect.height };
+    return { corner: corner, axis: def.axis, el: flap, inner: inner, holder: holder, shade: shade, W: rect.width, H: rect.height };
   }
 
   function setCornerFlapProgress(t, progress) {
@@ -2200,12 +2166,6 @@
     t.holder.style.top = (-top) + 'px';
     t.holder.style.width = t.W + 'px';
     t.holder.style.height = t.H + 'px';
-    // 影は角の三角形と同じ範囲に敷き、めくるほど濃くする（浮遊感）
-    t.cast.style.left = left + 'px';
-    t.cast.style.top = top + 'px';
-    t.cast.style.width = L + 'px';
-    t.cast.style.height = L + 'px';
-    t.cast.style.opacity = Math.min(0.85, progress * 1.4).toFixed(3);
     // 対角線まわりに回す。90度(真横向き)に近づくとほぼ見えなくなってしまうので、
     // 80度で頭打ちにして最後まで見える状態を保つ（伸びる分は引き続きLで大きくなる）
     var angle = Math.min(80, progress * 140);
@@ -2214,9 +2174,7 @@
   }
 
   function removeCornerFlap(t) {
-    if (!t) return;
-    if (t.el && t.el.parentNode) t.el.parentNode.removeChild(t.el);
-    if (t.cast && t.cast.parentNode) t.cast.parentNode.removeChild(t.cast);
+    if (t && t.el && t.el.parentNode) t.el.parentNode.removeChild(t.el);
   }
 
   // 指を離して取り消すとき: 平らに戻しながらフェードアウトして片付ける
@@ -2224,11 +2182,9 @@
     var el = t.el;
     t.inner.style.transition = 'transform 0.28s cubic-bezier(0.3, 0.1, 0.3, 1)';
     el.style.transition = 'opacity 0.28s ease-out';
-    t.cast.style.transition = 'opacity 0.28s ease-out';
     requestAnimationFrame(function () {
       t.inner.style.transform = 'rotate3d(' + t.axis[0] + ',' + t.axis[1] + ',0,0deg)';
       el.style.opacity = '0';
-      t.cast.style.opacity = '0';
     });
     setTimeout(function () {
       removeCornerFlap(t);
