@@ -56,7 +56,7 @@
 - **Googleカレンダー連携（読み取り）**: 一週間の計画帳と同じWorker基盤（/google/code・/google/token、refresh tokenはKV側）を流用。同一オリジンでlocalStorageを共有するためキーは pt: 接頭辞で分離。予定は日ページ上部に「印刷」風に表示され、書き込み欄が罫線単位で下にずれる。日ごとに10分キャッシュ（オフラインでも直近の予定が見える）。**iCloudカレンダーはネイティブ化時にEventKitで追加する方針（2026-07-13決定。EventKitなら端末の全カレンダーが1本で取れて重複も構造的に起きない）**
 - ビュー構造: currentView = day:YYYY-MM-DD | month:YYYY-MM（stepViewが前後を解決、めくり機構は共通）
 - **フォアグラウンド復帰で強制更新**（2026-07-14）: visibilitychange(visible)・focus・pageshowで、表示中の日/月のカレンダー予定を10分/24時間キャッシュを無視して即取得し直す（他アプリで予定を編集してから戻ってきた直後に反映させるため）。連続発火は5秒ガードで束ねる
-- **Googleカレンダーの色分けを時刻の文字に反映**（2026-07-14）: calendarListのbackgroundColorをpt:gcal-cals内に保存（gcalColorOf）、予定ごとに取得元カレンダーの色をつけてpt:events:ISOへ書き込む。日ページの.ev-timeと月ビュー選択日パネルの.mdp-timeに直接色を当てる。iCloud（ネイティブ/EventKit）側の色は未対応（Swiftプラグイン改修が必要、次にネイティブ側を触るときに対応）
+- **Googleカレンダーの色分けをタイトル文字に反映**（2026-07-14。当初は時刻の文字に当てたが、時刻は既定色のままにしてタイトル側へ変更）: calendarListのbackgroundColorをpt:gcal-cals内に保存（gcalColorOf）、予定ごとに取得元カレンダーの色をつけてpt:events:ISOへ書き込む。日ページ（.page-eventのタイトルspan）と月ビュー選択日パネル（.mdp-eventsのタイトルspan）に直接色を当てる。iCloud（ネイティブ/EventKit）側の色は未対応（Swiftプラグイン改修が必要、次にネイティブ側を触るときに対応）
 
 ## 暦情報（2026-07-13実装）
 
