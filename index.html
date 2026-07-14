@@ -44,7 +44,6 @@
     --divider-label: #b08a84;
     --mark: rgba(58, 60, 72, 0.4);
     --mg-border: rgba(110, 130, 160, 0.3);
-    --corner: rgba(180, 160, 120, 0.25);
     --shade-rgb: 60, 40, 20; /* めくりの陰影 */
   }
   body[data-paper="white"] {
@@ -75,7 +74,6 @@
     --divider-label: #c9a49e;
     --mark: rgba(232, 230, 222, 0.45);
     --mg-border: rgba(255, 255, 255, 0.16);
-    --corner: rgba(255, 255, 255, 0.12);
     --shade-rgb: 0, 0, 0;
   }
   /* 電光掲示板（駅の発車標。アンバーLED＋緑LED） */
@@ -100,7 +98,6 @@
     --divider-label: #c88f3a;
     --mark: rgba(255, 164, 31, 0.55);
     --mg-border: rgba(255, 176, 46, 0.14);
-    --corner: rgba(255, 176, 46, 0.14);
     --shade-rgb: 0, 0, 0;
   }
 
@@ -126,7 +123,6 @@
     --divider-label: #d8b8b2;
     --mark: rgba(240, 238, 228, 0.5);
     --mg-border: rgba(255, 255, 255, 0.18);
-    --corner: rgba(255, 255, 255, 0.12);
     --shade-rgb: 0, 0, 0;
   }
 
@@ -635,17 +631,6 @@
     background: var(--mark);
   }
 
-  /* ページ右下の「つまみ」ヒント */
-  .corner-hint {
-    position: absolute;
-    right: 6px;
-    bottom: 6px;
-    width: 34px;
-    height: 34px;
-    background: linear-gradient(315deg, var(--corner) 50%, transparent 50%);
-    border-radius: 0 0 9px 0;
-    pointer-events: none;
-  }
 
   /* 下の道具置き（ツールバー）。紙のタグ風ボタン */
   .toolbar {
@@ -715,9 +700,6 @@
     .toolbar button {
       background: linear-gradient(180deg, rgba(243, 236, 217, 0.92), rgba(231, 223, 200, 0.92));
       box-shadow: 0 2px 6px rgba(60, 45, 25, 0.25);
-    }
-    .corner-hint {
-      bottom: calc(52px + env(safe-area-inset-bottom, 0px));
     }
     .book-tabs {
       top: calc(130px + env(safe-area-inset-top, 0px));
@@ -1347,10 +1329,6 @@
       frag.appendChild(head);
       frag.appendChild(buildMonthGrid(v.y, v.m, interactive));
     }
-
-    var corner = document.createElement('div');
-    corner.className = 'corner-hint';
-    frag.appendChild(corner);
 
     return { frag: frag, iso: iso };
   }
