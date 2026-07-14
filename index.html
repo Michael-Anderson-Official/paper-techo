@@ -262,8 +262,31 @@
     overflow-y: auto;
   }
   .page-text::placeholder { color: var(--placeholder); }
-  .page-text.plan { flex: none; height: 308px; } /* 罫線11行ぶん */
   .page-text.diary { flex: 1 1 auto; min-height: 0; }
+  /* 計画欄は「時間つき予定」を書く場所（タップでエディタ）。罫線11行ぶんの高さ */
+  .plan-area {
+    flex: none;
+    height: 308px;
+    overflow-y: auto;
+    padding: 0 16px 0 0;
+    touch-action: pan-y;
+    cursor: pointer;
+  }
+  .plan-empty {
+    height: 28px;
+    line-height: 28px;
+    padding-left: 56px;
+    color: var(--placeholder);
+    font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif;
+    font-size: 17px;
+  }
+  .plan-add {
+    height: 28px;
+    line-height: 28px;
+    padding-left: 56px;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
   /* 日記の区切り（左の余白に「日記」、少し濃い罫線） */
   .page-divider {
     flex: none;
@@ -280,16 +303,7 @@
     color: var(--divider-label);
   }
 
-  /* その日のカレンダー予定（手帳に印刷されている風。書き込みとは違うインク） */
-  .page-events {
-    position: absolute;
-    top: calc(88px + env(safe-area-inset-top, 0px));
-    left: 0;
-    right: 0;
-    padding: 0 16px 0 0; /* 左余白は.page-event側（時刻を赤線の左に置くため親は0） */
-    pointer-events: none;
-    display: none;
-  }
+  /* その日の予定の1行（手帳に印刷されている風）。計画欄(.plan-area)の中に並ぶ */
   .page-event {
     position: relative;
     height: 28px;
@@ -846,27 +860,6 @@
 
   .paper-chip.locked {
     opacity: 0.55;
-  }
-
-  /* 「＋よてい」ボタン（日ページ右上・書き込み予定を足す） */
-  .add-event-btn {
-    position: absolute;
-    top: 58px;
-    right: 12px;
-    z-index: 15;
-    padding: 3px 12px;
-    font-family: inherit;
-    font-size: 13px;
-    color: #6b6046;
-    background: linear-gradient(180deg, rgba(243, 236, 217, 0.92), rgba(231, 223, 200, 0.92));
-    border: 1px solid rgba(120, 100, 60, 0.3);
-    border-radius: 14px;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(60, 45, 25, 0.2);
-  }
-  body[data-paper="board"] .add-event-btn,
-  body[data-paper="led"] .add-event-btn {
-    color: #4a4030;
   }
 
   /* 予定エディタの入力欄 */
@@ -1434,36 +1427,23 @@
         '</span>';
       frag.appendChild(head);
 
-      // カレンダーの予定（印刷風）。中身はrenderPage後にloadDayEventsが入れる
-      var evBox = document.createElement('div');
-      evBox.className = 'page-events';
-      frag.appendChild(evBox);
-
-      // 本文: 上=きょうの計画、区切り線、下=日記
-      function makeTextarea(cls, key, ph) {
-        var ta = document.createElement('textarea');
-        ta.className = 'page-text ' + cls;
-        ta.placeholder = interactive ? ph : '';
-        ta.value = localStorage.getItem(key) || '';
-        ta.spellcheck = false;
-        if (interactive) {
-          ta.addEventListener('input', function () {
-            localStorage.setItem(key, ta.value);
-            if (!ta._statCounted) {
-              ta._statCounted = true;
-              statBump(cls === 'plan' ? 'plan' : 'diary');
-            }
-            flashSaved();
-          });
-        } else {
-          ta.readOnly = true;
-          ta.tabIndex = -1;
-        }
-        return ta;
-      }
+      // 本文: 上=きょうの計画（時間つき予定・タップで書く）、区切り線、下=日記
       var body = document.createElement('div');
       body.className = 'page-body';
-      body.appendChild(makeTextarea('plan', keyText(iso), 'きょうの計画を書く…'));
+
+      // 計画欄＝予定を書く場所。中身はrenderPage後にloadDayEventsが入れる。
+      // タップでエディタが開く（予定の行以外＝空きスペースをタップ＝新規追加）
+      var planArea = document.createElement('div');
+      planArea.className = 'plan-area';
+      if (interactive) {
+        planArea.addEventListener('click', function (ev) {
+          // 予定の行（自分の予定＝編集／すべて見る）が自前で処理していなければ新規追加
+          if (ev.target.closest('.page-event.is-mine, .page-event-more')) return;
+          openEventEditor(iso, -1);
+        });
+      }
+      body.appendChild(planArea);
+
       var divider = document.createElement('div');
       divider.className = 'page-divider';
       var dLabel = document.createElement('span');
@@ -1471,18 +1451,24 @@
       dLabel.textContent = '日記';
       divider.appendChild(dLabel);
       body.appendChild(divider);
-      body.appendChild(makeTextarea('diary', keyDiary(iso), 'きょうの日記…'));
-      frag.appendChild(body);
 
-      // 「＋よてい」ボタン（自分で時間つきの予定を書き込む）
+      var diaryTa = document.createElement('textarea');
+      diaryTa.className = 'page-text diary';
+      diaryTa.placeholder = interactive ? 'きょうの日記…' : '';
+      diaryTa.value = localStorage.getItem(keyDiary(iso)) || '';
+      diaryTa.spellcheck = false;
       if (interactive) {
-        var addBtn = document.createElement('button');
-        addBtn.type = 'button';
-        addBtn.className = 'add-event-btn';
-        addBtn.textContent = '＋よてい';
-        addBtn.addEventListener('click', function () { openEventEditor(iso, -1); });
-        frag.appendChild(addBtn);
+        diaryTa.addEventListener('input', function () {
+          localStorage.setItem(keyDiary(iso), diaryTa.value);
+          if (!diaryTa._statCounted) { diaryTa._statCounted = true; statBump('diary'); }
+          flashSaved();
+        });
+      } else {
+        diaryTa.readOnly = true;
+        diaryTa.tabIndex = -1;
       }
+      body.appendChild(diaryTa);
+      frag.appendChild(body);
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
       var wEnd = fromISO(addDays(v.iso, 6));
@@ -2064,19 +2050,17 @@
     var root = document.getElementById('currentPage');
     var book = document.getElementById('book');
     var btn = document.getElementById('replayBtn');
-    var plan = root.querySelector('.page-text.plan');
     var diary = root.querySelector('.page-text.diary');
-    var evLines = Array.prototype.slice.call(root.querySelectorAll('.page-event'));
-    var fullPlan = plan.value;
+    // 予定の行（「すべて見る」は演出対象外）
+    var evLines = Array.prototype.slice.call(root.querySelectorAll('.page-event:not(.page-event-more)'));
     var fullDiary = diary.value;
-    if (!fullPlan && !fullDiary && evLines.length === 0) return; // 白紙は再生しない
+    if (!fullDiary && evLines.length === 0) return; // 白紙は再生しない
 
     // 日付ヘッダーと予定のテキストノード（色付きspan込み・見た目の順）
     var headNodes = textNodesOf(root.querySelector('.page-date'));
     var evNodeGroups = evLines.map(function (el) { return textNodesOf(el); });
 
     // まっさらにする
-    plan.value = '';
     diary.value = '';
     headNodes.forEach(function (t) { t.node.nodeValue = ''; });
     evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = ''; }); });
@@ -2087,7 +2071,6 @@
       if (finished) return;
       finished = true;
       timers.forEach(clearTimeout);
-      plan.value = fullPlan;
       diary.value = fullDiary;
       headNodes.forEach(function (t) { t.node.nodeValue = t.full; });
       evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = t.full; }); });
@@ -2108,7 +2091,7 @@
     var evChars = evNodeGroups.reduce(function (s, g) {
       return s + g.reduce(function (s2, t) { return s2 + t.full.length; }, 0);
     }, 0);
-    var totalChars = headChars + evChars + fullPlan.length + fullDiary.length;
+    var totalChars = headChars + evChars + fullDiary.length;
     var typeDelay = Math.max(28, Math.min(80, Math.round(5600 / Math.max(1, totalChars))));
 
     // テキストノード列を1文字ずつ出すスケジューラ
@@ -2132,12 +2115,6 @@
     evNodeGroups.forEach(function (g) {
       typeNodes(g, typeDelay);
       t += 180;
-    });
-    t += 200;
-    // 計画が1文字ずつ
-    fullPlan.split('').forEach(function (ch, i) {
-      at(t, function () { plan.value = fullPlan.slice(0, i + 1); });
-      t += (ch === '\n' ? 180 : typeDelay);
     });
     t += 400;
     // 日記が1文字ずつ
@@ -2635,14 +2612,21 @@
   var DAY_EVENTS_CAP = 6; // 紙面（計画欄）を圧迫しないための表示上限
 
   function renderEventsInto(rootEl, iso) {
-    var box = rootEl.querySelector('.page-events');
-    var body = rootEl.querySelector('.page-body');
-    if (!box || !body) return;
+    var box = rootEl.querySelector('.plan-area');
+    if (!box) return;
     var all = mergedEventsFor(iso);
     // あふれる場合は最後の1枠を「すべて見る」に使う（隠れた予定にも一覧から必ず到達できるように）
     var overflow = all.length > DAY_EVENTS_CAP;
     var shown = overflow ? all.slice(0, DAY_EVENTS_CAP - 1) : all;
     box.innerHTML = '';
+    if (all.length === 0) {
+      // 空のときは「タップで予定を書く」案内（この案内は罫線1行ぶん。残りの空きもタップで追加）
+      var empty = document.createElement('div');
+      empty.className = 'plan-empty';
+      empty.textContent = 'きょうの計画を書く…';
+      box.appendChild(empty);
+      return;
+    }
     shown.forEach(function (ev) {
       var line = document.createElement('div');
       line.className = 'page-event';
@@ -2668,29 +2652,22 @@
       if (ev.color) titleEl.style.color = ev.color;
       titleEl.textContent = ev.title;
       line.appendChild(titleEl);
-      // 自分で書いた予定はタップで編集できる（カレンダー連携ぶんは読み取り専用のまま）
+      // 自分で書いた予定はタップで編集（カレンダー連携ぶんは読み取り専用。空きタップで新規追加）
       if (ev.local) {
         line.classList.add('is-mine');
-        line.style.pointerEvents = 'auto';
         line.style.cursor = 'pointer';
         line.addEventListener('click', function () { openEventEditor(iso, ev.idx); });
       }
       box.appendChild(line);
     });
-    var rowCount = shown.length;
     if (overflow) {
       var moreLine = document.createElement('div');
       moreLine.className = 'page-event page-event-more';
-      moreLine.style.pointerEvents = 'auto';
       moreLine.style.cursor = 'pointer';
       moreLine.textContent = 'ほか ' + (all.length - shown.length) + ' 件（すべて見る）';
       moreLine.addEventListener('click', function () { openDayEventsList(iso); });
       box.appendChild(moreLine);
-      rowCount += 1;
     }
-    box.style.display = rowCount ? 'block' : 'none';
-    // 予定のぶんだけ本文（計画＋日記）を下の罫線へずらす（罫線1本=28px）
-    body.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (rowCount * 28) + 'px)';
   }
 
   function loadDayEvents(rootEl, iso, force) {
