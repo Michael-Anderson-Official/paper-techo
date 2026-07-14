@@ -4,3 +4,4 @@ ios/App/App/public/
 ios/App/output/
 .DS_Store
 ADMIN_TOKEN.local.txt
+.claude/settings.local.json
