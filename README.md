@@ -93,7 +93,7 @@
 
 - 匿名・数だけの利用統計: open/flip/plan/diary/osarai/monthの回数＋選択中の紙/字/連携有無（v="paper/font/0|1"）。**書いた内容は一切送らない**（テストで文字列漏れゼロを機械検証）
 - 匿名ID（pt:anon-id）で1日1回まとめ送信（pt:stats-sent）。設定「つかいかたの統計」でオフ可（pt:stats=0、オフで未送信分も破棄）。localhost等では送らない（_ptStatsTestフックはテスト用）
-- Worker側: POST /techo/stat（検証つき・KVにtechostat:date:id、TTL400日）／GET /techo/stats?date=（X-Admin-Token必須の集計照会）。**secret TECHO_ADMIN_TOKEN の設定とwrangler deployが未実施**
+- Worker側: POST /techo/stat（検証つき・KVにtechostat:date:id、TTL400日）／GET /techo/stats?date=（X-Admin-Token必須の集計照会）。**2026-07-14確認: secret TECHO_ADMIN_TOKEN設定済み・デプロイ済み・POST→GET集計まで実地検証OK**（study-plan-appと共用のkeikakuchou-notify Worker）
 - プライバシーポリシー§4更新済み（項目列挙・オフ手段・保持期間）。App Privacyラベルは「使用状況データ・ユーザーに関連付けられない」になる
 
 ## 未実装（製品化するなら）
