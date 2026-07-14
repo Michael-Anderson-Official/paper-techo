@@ -848,6 +848,60 @@
     opacity: 0.55;
   }
 
+  /* 「＋よてい」ボタン（日ページ右上・書き込み予定を足す） */
+  .add-event-btn {
+    position: absolute;
+    top: 58px;
+    right: 12px;
+    z-index: 15;
+    padding: 3px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    color: #6b6046;
+    background: linear-gradient(180deg, rgba(243, 236, 217, 0.92), rgba(231, 223, 200, 0.92));
+    border: 1px solid rgba(120, 100, 60, 0.3);
+    border-radius: 14px;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(60, 45, 25, 0.2);
+  }
+  body[data-paper="board"] .add-event-btn,
+  body[data-paper="led"] .add-event-btn {
+    color: #4a4030;
+  }
+
+  /* 予定エディタの入力欄 */
+  .event-times {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .event-time-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 16px;
+    color: #4a4e5c;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(120, 100, 60, 0.3);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .event-tilde { color: #6b6046; }
+  .event-title-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 16px;
+    color: #4a4e5c;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(120, 100, 60, 0.3);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  #evDelete {
+    background: linear-gradient(180deg, #f0e0dc, #e6ccc6);
+    color: #8a4a42;
+  }
+
   /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い） */
   body[data-paper="board"] .book,
   body[data-paper="board"] .toolbar {
@@ -1064,6 +1118,27 @@
   </div>
 </div>
 
+<!-- 予定エディタ（時間＋よていを自分で書く） -->
+<div id="eventModal" class="settings-modal" style="display:none;">
+  <div class="settings-card">
+    <h2 id="eventModalTitle">よていを書く</h2>
+    <p class="settings-label">時間</p>
+    <div class="event-times">
+      <input id="evStart" type="time" class="event-time-input" aria-label="はじまりの時間">
+      <span class="event-tilde">〜</span>
+      <input id="evEnd" type="time" class="event-time-input" aria-label="おわりの時間">
+    </div>
+    <p class="settings-note">時間はあけてもだいじょうぶ（終日あつかい）。</p>
+    <p class="settings-label" style="margin-top:14px;">よてい</p>
+    <input id="evTitle" type="text" class="event-title-input" placeholder="なにをする？" maxlength="60">
+    <div style="display:flex; gap:8px;">
+      <button id="evSave" type="button" class="settings-close">保存</button>
+      <button id="evDelete" type="button" class="settings-close">削除</button>
+    </div>
+    <button id="evCancel" type="button" class="settings-close">とじる</button>
+  </div>
+</div>
+
 <script>
 (function () {
   'use strict';
@@ -1121,7 +1196,8 @@
 
   function hasEntry(iso) {
     return !!((localStorage.getItem(keyText(iso)) || '').trim() ||
-      (localStorage.getItem(keyDiary(iso)) || '').trim());
+      (localStorage.getItem(keyDiary(iso)) || '').trim() ||
+      readMyEvents(iso).length);
   }
 
   // 週の始まり（0=日〜6=土）。月のカレンダーの列順・週見開きの範囲に効く
@@ -1237,6 +1313,40 @@
   // ---- ストレージ ----
   function keyText(iso) { return 'pt:' + iso + ':text'; }
   function keyDiary(iso) { return 'pt:' + iso + ':diary'; }
+  function keyMyEvents(iso) { return 'pt:' + iso + ':myevents'; } // 自分で書いた予定 [{s,e,t}]
+
+  // 自分で書いた予定の読み書き。s/e="HH:MM"（空=終日）、t=タイトル
+  function readMyEvents(iso) {
+    try {
+      var a = JSON.parse(localStorage.getItem(keyMyEvents(iso)) || '[]');
+      return Array.isArray(a) ? a : [];
+    } catch (e) { return []; }
+  }
+  function writeMyEvents(iso, arr) {
+    if (arr && arr.length) localStorage.setItem(keyMyEvents(iso), JSON.stringify(arr));
+    else localStorage.removeItem(keyMyEvents(iso));
+  }
+
+  // 時刻文字列の先頭HH:MMを分に。無ければ-1（終日＝先頭に並ぶ）
+  function timeSortKey(timeStr) {
+    var m = /^(\d{1,2}):(\d{2})/.exec(timeStr || '');
+    return m ? (+m[1]) * 60 + (+m[2]) : -1;
+  }
+
+  // カレンダー連携の予定（読み取り専用）と、自分で書いた予定をまとめて時刻順に返す。
+  // 各要素: { time, title, color, local, idx }（localのidxはmyevents配列内の位置＝編集用）
+  function mergedEventsFor(iso) {
+    var cached = readCachedEvents(iso);
+    var all = (cached ? cached.list : []).map(function (ev) {
+      return { time: ev.time, title: ev.title, color: ev.color || null, local: false, sort: timeSortKey(ev.time) };
+    });
+    readMyEvents(iso).forEach(function (me, i) {
+      var time = me.s ? (me.e ? me.s + '〜' + me.e : me.s) : '終日';
+      all.push({ time: time, title: me.t, color: null, local: true, idx: i, sort: me.s ? timeSortKey(me.s) : -1 });
+    });
+    all.sort(function (a, b) { return a.sort - b.sort; });
+    return all;
+  }
 
   var saveNoteTimer = 0;
   function flashSaved() {
@@ -1313,6 +1423,16 @@
       body.appendChild(divider);
       body.appendChild(makeTextarea('diary', keyDiary(iso), 'きょうの日記…'));
       frag.appendChild(body);
+
+      // 「＋よてい」ボタン（自分で時間つきの予定を書き込む）
+      if (interactive) {
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'add-event-btn';
+        addBtn.textContent = '＋よてい';
+        addBtn.addEventListener('click', function () { openEventEditor(iso, -1); });
+        frag.appendChild(addBtn);
+      }
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
       var wEnd = fromISO(addDays(v.iso, 6));
@@ -1359,8 +1479,7 @@
       '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span>' +
       '<span class="mdp-sub">' + (holiday ? holiday + ' ' : '') + rokuyo + '</span>';
     evEl.innerHTML = '';
-    var cached = readCachedEvents(iso);
-    var list = cached ? cached.list : [];
+    var list = mergedEventsFor(iso);
     if (list.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'mdp-empty';
@@ -1450,21 +1569,21 @@
           mark.className = 'mark';
           cell.appendChild(mark);
         }
-        // その日の予定（キャッシュから2件まで印刷）
-        var cachedEv = readCachedEvents(iso);
-        if (cachedEv && cachedEv.list.length) {
+        // その日の予定（連携＋自分で書いた分をまとめて2件まで印刷）
+        var mCellEv = mergedEventsFor(iso);
+        if (mCellEv.length) {
           var evs = document.createElement('div');
           evs.className = 'mg-evs';
-          cachedEv.list.slice(0, 2).forEach(function (ev) {
+          mCellEv.slice(0, 2).forEach(function (ev) {
             var line = document.createElement('div');
             line.className = 'mg-ev';
             line.textContent = ev.title;
             evs.appendChild(line);
           });
-          if (cachedEv.list.length > 2) {
+          if (mCellEv.length > 2) {
             var more = document.createElement('div');
             more.className = 'mg-ev more';
-            more.textContent = '+' + (cachedEv.list.length - 2);
+            more.textContent = '+' + (mCellEv.length - 2);
             evs.appendChild(more);
           }
           cell.appendChild(evs);
@@ -1532,8 +1651,7 @@
 
         var body = document.createElement('div');
         body.className = 'wg-body';
-        var cachedEv = readCachedEvents(iso);
-        var list = cachedEv ? cachedEv.list : [];
+        var list = mergedEventsFor(iso);
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'wg-empty';
@@ -2468,8 +2586,7 @@
     var box = rootEl.querySelector('.page-events');
     var body = rootEl.querySelector('.page-body');
     if (!box || !body) return;
-    var cached = readCachedEvents(iso);
-    var shown = (cached ? cached.list : []).slice(0, 5);
+    var shown = mergedEventsFor(iso).slice(0, 6);
     box.innerHTML = '';
     shown.forEach(function (ev) {
       var line = document.createElement('div');
@@ -2496,6 +2613,13 @@
       if (ev.color) titleEl.style.color = ev.color;
       titleEl.textContent = ev.title;
       line.appendChild(titleEl);
+      // 自分で書いた予定はタップで編集できる（カレンダー連携ぶんは読み取り専用のまま）
+      if (ev.local) {
+        line.classList.add('is-mine');
+        line.style.pointerEvents = 'auto';
+        line.style.cursor = 'pointer';
+        line.addEventListener('click', function () { openEventEditor(iso, ev.idx); });
+      }
       box.appendChild(line);
     });
     box.style.display = shown.length ? 'block' : 'none';
@@ -2630,6 +2754,76 @@
       loadMonthEvents(y, m, rootEl, force);
     }
   }
+
+  // ---- 予定エディタ（時間つきの予定を自分で書く）----
+  var editState = { iso: null, idx: -1 };
+
+  function openEventEditor(iso, idx) {
+    editState.iso = iso;
+    editState.idx = idx;
+    var mine = readMyEvents(iso);
+    var ev = (idx >= 0 && mine[idx]) ? mine[idx] : { s: '', e: '', t: '' };
+    document.getElementById('evStart').value = ev.s || '';
+    document.getElementById('evEnd').value = ev.e || '';
+    document.getElementById('evTitle').value = ev.t || '';
+    document.getElementById('eventModalTitle').textContent = idx >= 0 ? 'よていをなおす' : 'よていを書く';
+    document.getElementById('evDelete').style.display = idx >= 0 ? '' : 'none';
+    document.getElementById('eventModal').style.display = 'flex';
+    setTimeout(function () { document.getElementById('evTitle').focus(); }, 60);
+  }
+
+  function closeEventEditor() {
+    document.getElementById('eventModal').style.display = 'none';
+  }
+
+  // 予定を追加・更新した後、開いている日ページの予定欄だけを描き直す（本文の入力状態は壊さない）。
+  // 別の日・週・月を見ているときはページごと描き直す
+  function refreshAfterEventChange(iso) {
+    var v = viewParts(currentView);
+    if (v.type === 'day' && v.iso === iso) {
+      renderEventsInto(document.getElementById('currentPage'), iso);
+    } else {
+      renderPage(document.getElementById('currentPage'), currentView, true);
+    }
+  }
+
+  function saveEventFromEditor() {
+    var iso = editState.iso;
+    if (!iso) return closeEventEditor();
+    var s = document.getElementById('evStart').value || '';
+    var e = document.getElementById('evEnd').value || '';
+    var t = (document.getElementById('evTitle').value || '').trim();
+    if (!t) { closeEventEditor(); return; } // タイトルが空なら何もしない
+    var mine = readMyEvents(iso);
+    var item = { s: s, e: e, t: t };
+    if (editState.idx >= 0 && mine[editState.idx]) mine[editState.idx] = item;
+    else mine.push(item);
+    writeMyEvents(iso, mine);
+    statBump('event');
+    closeEventEditor();
+    refreshAfterEventChange(iso);
+    flashSaved();
+  }
+
+  function deleteEventFromEditor() {
+    var iso = editState.iso;
+    var mine = readMyEvents(iso);
+    if (editState.idx >= 0 && mine[editState.idx]) {
+      mine.splice(editState.idx, 1);
+      writeMyEvents(iso, mine);
+    }
+    closeEventEditor();
+    refreshAfterEventChange(iso);
+    flashSaved();
+  }
+
+  document.getElementById('evSave').addEventListener('click', saveEventFromEditor);
+  document.getElementById('evDelete').addEventListener('click', deleteEventFromEditor);
+  document.getElementById('evCancel').addEventListener('click', closeEventEditor);
+  // 背景（カードの外）をタップしたら閉じる
+  document.getElementById('eventModal').addEventListener('click', function (ev) {
+    if (ev.target === this) closeEventEditor();
+  });
 
   // ---- メニューと設定 ----
   (function () {
