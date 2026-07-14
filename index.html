@@ -332,6 +332,7 @@
     transition: transform 0.62s cubic-bezier(0.35, 0.1, 0.25, 1);
     z-index: 30;
     pointer-events: none;
+    will-change: transform;
   }
   /* 紙のしなり: めくる1枚を左右2枚の蝶番構造にして、外側の半分が遅れてついてくる */
   .leaf-half {
@@ -899,6 +900,7 @@
   /* 引き違いスライド中の板（黒板・電光掲示板） */
   .board-sliding {
     box-shadow: 0 0 26px rgba(0, 0, 0, 0.5);
+    will-change: transform;
   }
 
   /* ページ再生中: 書き込み操作を一時停止（見るだけ） */
@@ -2054,6 +2056,18 @@
     var book = document.getElementById('book');
     var startX = null, startY = null;
     var active = null; // { leaf, dir, targetISO, width, progress, lastX, lastT, vel }
+    var rafPending = false;
+
+    // pointermoveはブラウザによっては1フレームに複数回・ばらばらの間隔で来るので、
+    // 描画への反映は毎回その場でやらずrAFに一本化してコマ落ち・カクつきを減らす
+    function scheduleLeafUpdate() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(function () {
+        rafPending = false;
+        if (active) setLeafProgress(active.turn, active.progress);
+      });
+    }
 
     book.addEventListener('pointerdown', function (ev) {
       // 前のめくりの着地中なら早送りして、すぐ次をめくれるようにする
@@ -2092,7 +2106,7 @@
       active.vel = (ev.clientX - active.lastX) / dt; // px/ms（符号つき）
       active.lastX = ev.clientX;
       active.lastT = ev.timeStamp;
-      setLeafProgress(active.turn, active.progress);
+      scheduleLeafUpdate();
       ev.preventDefault();
     });
 
