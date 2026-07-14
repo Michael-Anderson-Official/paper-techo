@@ -2043,8 +2043,8 @@
       return;
     }
     if (v.type === 'week') {
-      // 週の見開きを見ているときは「今週」へ
-      var thisWeekStart = weekStartISO(currentISO);
+      // 週の見開きを見ているときは「今週」へ（currentISOは日ページを離れると更新されないので実際の今日から計算する）
+      var thisWeekStart = weekStartISO(toISO(new Date()));
       flipTo('week:' + thisWeekStart, thisWeekStart > v.iso ? 1 : -1);
       return;
     }
@@ -2518,16 +2518,17 @@
 
   // 月まるごとの予定取得。日別キャッシュ（pt:events:ISO）に書き込むので、
   // 月ビューの表示と日ページのキャッシュ温めを1回のリクエストで済ませる。
-  // 複数日にまたがる終日予定は、かかっている日すべてに入れる
+  // 複数日にまたがる予定（終日・日をまたぐ時刻つき）は、かかっている日すべてに入れる
   function bucketEventInto(buckets, startMs, endMs, allDay, time, title, color, y, m) {
-    var d = new Date(startMs);
-    var last = new Date(Math.max(startMs, (endMs || startMs) - 1));
+    var startMoment = new Date(startMs);
+    var d = new Date(startMoment.getFullYear(), startMoment.getMonth(), startMoment.getDate());
+    var lastMoment = new Date(Math.max(startMs, (endMs || startMs) - 1));
+    var last = new Date(lastMoment.getFullYear(), lastMoment.getMonth(), lastMoment.getDate());
     var guard = 0;
     while (d <= last && guard < 62) {
       var iso = toISO(d);
       if (!buckets[iso]) buckets[iso] = [];
       buckets[iso].push({ time: time, title: title, color: color, sort: allDay ? 0 : startMs });
-      if (!allDay) break; // 時刻つきは開始日だけ
       d.setDate(d.getDate() + 1);
       guard++;
     }
@@ -2582,7 +2583,8 @@
               endMs = fromISO(ev.end && ev.end.date ? ev.end.date : ev.start.date).getTime(); // endは翌日を指す（排他的）
             } else {
               startMs = new Date(ev.start.dateTime).getTime();
-              endMs = startMs;
+              // 日をまたぐ時刻つき予定（深夜またぎ等）も終了日の行に出るよう、実際の終了時刻を使う
+              endMs = ev.end && ev.end.dateTime ? new Date(ev.end.dateTime).getTime() : startMs;
             }
             bucketEventInto(buckets, startMs, endMs, allDay,
               formatEvTime(ev), ev.summary || '(タイトルなし)', r.color, y, m);
@@ -2617,8 +2619,9 @@
     }).catch(function () { /* オフライン等は静かに */ });
   }
 
-  // 週の見開き。またがる月ぶんだけloadMonthEventsを呼んで日別キャッシュを温める（取得・保存の仕組みは月と共通）
-  function loadWeekEvents(startIso, rootEl) {
+  // 週の見開き。またがる月ぶんだけloadMonthEventsを呼んで日別キャッシュを温める（取得・保存の仕組みは月と共通）。
+  // またがる月が同じなら1回だけ呼ぶ（週の大半は1か月に収まるため重複問い合わせを避ける）
+  function loadWeekEvents(startIso, rootEl, force) {
     var seen = {};
     for (var i = 0; i < 7; i++) {
       var d = fromISO(addDays(startIso, i));
@@ -2626,7 +2629,7 @@
       var key = y + '-' + m;
       if (seen[key]) continue;
       seen[key] = true;
-      loadMonthEvents(y, m, rootEl);
+      loadMonthEvents(y, m, rootEl, force);
     }
   }
 
@@ -2664,7 +2667,9 @@
           if (vp.type === 'month') {
             renderPage(document.getElementById('currentPage'), currentView, true);
           } else if (vp.type === 'week') {
-            currentView = 'week:' + weekStartISO(vp.iso);
+            // 表示中の週の真ん中の日を基準に計算し直す（始まりの日そのものを基準にすると、
+            // 新しい週の始まりが後ろにずれる設定の時に前の週へ大きく飛んでしまうため）
+            currentView = 'week:' + weekStartISO(addDays(vp.iso, 3));
             renderPage(document.getElementById('currentPage'), currentView, true);
           }
           flashSaved();
@@ -2951,12 +2956,7 @@
     var v = viewParts(currentView);
     if (v.type === 'day') loadDayEvents(el, v.iso, true);
     else if (v.type === 'month') loadMonthEvents(v.y, v.m, el, true);
-    else if (v.type === 'week') {
-      for (var wi = 0; wi < 7; wi++) {
-        var wd = fromISO(addDays(v.iso, wi));
-        loadMonthEvents(wd.getFullYear(), wd.getMonth() + 1, el, true);
-      }
-    }
+    else if (v.type === 'week') loadWeekEvents(v.iso, el, true);
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') refreshCurrentViewFromForeground();
