@@ -1715,7 +1715,7 @@
     var dir = t.dir;
     var angle = dir > 0 ? -progress * 178 : -178 + progress * 178;
     var wave = Math.sin(progress * Math.PI);
-    var bend = (dir > 0 ? 1 : -1) * LEAF_BEND_DEG * wave;
+    var bend = (dir > 0 ? -1 : 1) * LEAF_BEND_DEG * wave;
     leaf.style.transform = 'rotateY(' + angle + 'deg)';
     var hr = leaf.querySelector('.leaf-half.hr');
     if (hr) hr.style.transform = 'rotateY(' + bend.toFixed(2) + 'deg)';
@@ -2113,6 +2113,9 @@
     function release() {
       startX = null;
       if (!active) return;
+      // 直前のpointermoveぶんがまだrAF待ちで未反映のことがあるので、
+      // 着地アニメを組む前に指を離した瞬間の位置を確実に描画へ反映しておく
+      setLeafProgress(active.turn, active.progress);
       // フリック: めくる方向への勢いなら進み具合が浅くても確定、逆方向なら取り消し
       var flingCommit = active.dir > 0 ? active.vel < -0.35 : active.vel > 0.35;
       var flingCancel = active.dir > 0 ? active.vel > 0.35 : active.vel < -0.35;
