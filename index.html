@@ -1128,6 +1128,9 @@
       <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
     </div>
     <p class="settings-note">大安・仏滅などをページと月のカレンダーに印刷します。</p>
+    <p class="settings-label" style="margin-top:16px;">時間のきざみ</p>
+    <div id="timeStepChips" class="week-chips"></div>
+    <p class="settings-note">予定を書くときの時間の刻み幅です。</p>
     <p class="settings-label" style="margin-top:16px;">つかいかたの統計</p>
     <div class="week-chips">
       <button id="statsToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">統計を送る</button>
@@ -1300,6 +1303,11 @@
 
   function getRokuyoEnabled() {
     return localStorage.getItem('pt:rokuyo') !== '0';
+  }
+
+  // 予定を書くときの時間の刻み（分）。1 か 5。既定は5分
+  function getTimeStep() {
+    return localStorage.getItem('pt:timestep') === '1' ? 1 : 5;
   }
 
   // 紙の色。CSS変数で紙面・紙の裏・罫線・文字の色味が連動する。
@@ -2821,6 +2829,10 @@
     editState.idx = idx;
     var mine = readMyEvents(iso);
     var ev = (idx >= 0 && mine[idx]) ? mine[idx] : { s: '', e: '', t: '' };
+    // 時間入力の刻み（1分=60秒 / 5分=300秒）を設定に合わせる
+    var stepSec = String(getTimeStep() * 60);
+    document.getElementById('evStart').step = stepSec;
+    document.getElementById('evEnd').step = stepSec;
     document.getElementById('evStart').value = ev.s || '';
     document.getElementById('evEnd').value = ev.e || '';
     document.getElementById('evTitle').value = ev.t || '';
@@ -3044,6 +3056,26 @@
       flashSaved();
     });
 
+    // 時間のきざみ（1分 / 5分）
+    var timeStepChips = document.getElementById('timeStepChips');
+    function renderTimeStepChips() {
+      timeStepChips.innerHTML = '';
+      var cur = getTimeStep();
+      [[1, '1分'], [5, '5分']].forEach(function (opt) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = opt[1];
+        b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
+        b.className = cur === opt[0] ? 'active' : '';
+        b.addEventListener('click', function () {
+          localStorage.setItem('pt:timestep', String(opt[0]));
+          renderTimeStepChips();
+          flashSaved();
+        });
+        timeStepChips.appendChild(b);
+      });
+    }
+
     // 六曜の表示トグル
     var rokuyoToggle = document.getElementById('rokuyoToggle');
     function updateRokuyoToggle() {
@@ -3061,6 +3093,7 @@
       renderChips();
       renderPaperChips();
       renderFontChips();
+      renderTimeStepChips();
       updateRokuyoToggle();
       updateStatsToggle();
       updateGcalUI();
