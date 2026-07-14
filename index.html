@@ -1261,6 +1261,7 @@
         var line = document.createElement('div');
         var t = document.createElement('span');
         t.className = 'mdp-time';
+        if (ev.color) t.style.color = ev.color;
         t.textContent = ev.time;
         line.appendChild(t);
         line.appendChild(document.createTextNode(ev.title));
@@ -2168,16 +2169,29 @@
         localStorage.removeItem('pt:gcal-scope-old');
         return res.json();
       }).then(function (data) {
-        var ids = (data.items || []).filter(function (c) {
+        var kept = (data.items || []).filter(function (c) {
           if (!c.id || c.hidden) return false;
           if (c.selected === false) return false; // Googleカレンダー上で非表示のものは出さない
           if (c.id.indexOf('#holiday@group.v.calendar.google.com') !== -1) return false;
           return true;
-        }).map(function (c) { return c.id; });
+        });
+        var ids = kept.map(function (c) { return c.id; });
         if (ids.length === 0) ids = ['primary'];
-        localStorage.setItem('pt:gcal-cals', JSON.stringify({ t: Date.now(), ids: ids }));
+        var colors = {};
+        kept.forEach(function (c) { if (c.backgroundColor) colors[c.id] = c.backgroundColor; });
+        localStorage.setItem('pt:gcal-cals', JSON.stringify({ t: Date.now(), ids: ids, colors: colors }));
         return ids;
       });
+  }
+
+  // カレンダーの色（Googleカレンダー上の色分けそのまま）。無ければnull=通常の文字色
+  function gcalColorOf(calId) {
+    try {
+      var cached = JSON.parse(localStorage.getItem('pt:gcal-cals') || 'null');
+      return (cached && cached.colors && cached.colors[calId]) || null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function fetchDayEvents(iso, force) {
@@ -2193,22 +2207,25 @@
         return fetchGcalApi(url).then(function (res) {
           if (!res.ok) return { items: [] }; // 1つ失敗しても他は表示する
           return res.json();
-        }).catch(function () { return { items: [] }; });
+        }).catch(function () { return { items: [] }; }).then(function (data) {
+          return { data: data, color: gcalColorOf(calId) };
+        });
       });
       return Promise.all(fetches);
     }).then(function (results) {
       var all = [];
-      results.forEach(function (data) {
-        (data.items || []).forEach(function (ev) {
+      results.forEach(function (r) {
+        (r.data.items || []).forEach(function (ev) {
           all.push({
             time: formatEvTime(ev),
             title: ev.summary || '(タイトルなし)',
+            color: r.color,
             sort: (ev.start && ev.start.dateTime) ? new Date(ev.start.dateTime).getTime() : 0 // 終日は先頭
           });
         });
       });
       all.sort(function (a, b) { return a.sort - b.sort; });
-      var list = all.map(function (ev) { return { time: ev.time, title: ev.title }; });
+      var list = all.map(function (ev) { return { time: ev.time, title: ev.title, color: ev.color }; });
       localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
       return list;
     });
@@ -2226,6 +2243,7 @@
       line.className = 'page-event';
       var t = document.createElement('span');
       t.className = 'ev-time';
+      if (ev.color) t.style.color = ev.color;
       var time = ev.time || '';
       var sep = time.indexOf('〜');
       if (sep > 0) {
@@ -2264,14 +2282,14 @@
   // 月まるごとの予定取得。日別キャッシュ（pt:events:ISO）に書き込むので、
   // 月ビューの表示と日ページのキャッシュ温めを1回のリクエストで済ませる。
   // 複数日にまたがる終日予定は、かかっている日すべてに入れる
-  function bucketEventInto(buckets, startMs, endMs, allDay, time, title, y, m) {
+  function bucketEventInto(buckets, startMs, endMs, allDay, time, title, color, y, m) {
     var d = new Date(startMs);
     var last = new Date(Math.max(startMs, (endMs || startMs) - 1));
     var guard = 0;
     while (d <= last && guard < 62) {
       var iso = toISO(d);
       if (!buckets[iso]) buckets[iso] = [];
-      buckets[iso].push({ time: time, title: title, sort: allDay ? 0 : startMs });
+      buckets[iso].push({ time: time, title: title, color: color, sort: allDay ? 0 : startMs });
       if (!allDay) break; // 時刻つきは開始日だけ
       d.setDate(d.getDate() + 1);
       guard++;
@@ -2297,7 +2315,7 @@
         var buckets = {};
         ((res && res.events) || []).forEach(function (ev) {
           bucketEventInto(buckets, ev.start, ev.end, !!ev.allDay,
-            formatNativeEvTime(ev), ev.title || '(タイトルなし)', y, m);
+            formatNativeEvTime(ev), ev.title || '(タイトルなし)', null, y, m);
         });
         return buckets;
       });
@@ -2311,13 +2329,15 @@
           return fetchGcalApi(url).then(function (res) {
             if (!res.ok) return { items: [] };
             return res.json();
-          }).catch(function () { return { items: [] }; });
+          }).catch(function () { return { items: [] }; }).then(function (data) {
+            return { data: data, color: gcalColorOf(calId) };
+          });
         });
         return Promise.all(fetches);
       }).then(function (results) {
         var buckets = {};
-        results.forEach(function (data) {
-          (data.items || []).forEach(function (ev) {
+        results.forEach(function (r) {
+          (r.data.items || []).forEach(function (ev) {
             var allDay = !(ev.start && ev.start.dateTime);
             var startMs, endMs;
             if (allDay) {
@@ -2328,7 +2348,7 @@
               endMs = startMs;
             }
             bucketEventInto(buckets, startMs, endMs, allDay,
-              formatEvTime(ev), ev.summary || '(タイトルなし)', y, m);
+              formatEvTime(ev), ev.summary || '(タイトルなし)', r.color, y, m);
           });
         });
         return buckets;
@@ -2341,7 +2361,7 @@
       for (var day = 1; day <= days; day++) {
         var iso = toISO(new Date(y, m - 1, day));
         var list = (buckets[iso] || []).sort(function (a, b) { return a.sort - b.sort; })
-          .map(function (ev) { return { time: ev.time, title: ev.title }; });
+          .map(function (ev) { return { time: ev.time, title: ev.title, color: ev.color }; });
         localStorage.setItem('pt:events:' + iso, JSON.stringify({ t: Date.now(), list: list }));
       }
       localStorage.setItem('pt:events-month:' + ym, String(Date.now()));
