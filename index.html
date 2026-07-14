@@ -902,6 +902,38 @@
     color: #8a4a42;
   }
 
+  /* その日の予定の一覧（あふれた分の受け皿） */
+  #dayEventsList {
+    max-height: 46vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .del-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid rgba(120, 100, 60, 0.18);
+    font-size: 15px;
+    color: #4a4e5c;
+  }
+  .del-row .del-time {
+    flex: none;
+    min-width: 90px;
+    font-size: 13px;
+    color: #6b6046;
+  }
+  .del-row .del-title { flex: 1 1 auto; }
+  .del-row.is-mine {
+    cursor: pointer;
+  }
+  .del-row .del-edit {
+    flex: none;
+    font-size: 12px;
+    color: #5a7d5a;
+  }
+  .del-row.readonly .del-title { color: #8a8d99; }
+
   /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い） */
   body[data-paper="board"] .book,
   body[data-paper="board"] .toolbar {
@@ -1136,6 +1168,16 @@
       <button id="evDelete" type="button" class="settings-close">削除</button>
     </div>
     <button id="evCancel" type="button" class="settings-close">とじる</button>
+  </div>
+</div>
+
+<!-- その日の予定ぜんぶ（表示があふれたとき、隠れた予定にもここから届く） -->
+<div id="dayEventsModal" class="settings-modal" style="display:none;">
+  <div class="settings-card">
+    <h2 id="dayEventsTitle">その日の予定</h2>
+    <div id="dayEventsList"></div>
+    <button id="dayEventsAdd" type="button" class="settings-close">＋よていを書く</button>
+    <button id="dayEventsClose" type="button" class="settings-close">とじる</button>
   </div>
 </div>
 
@@ -2582,11 +2624,16 @@
     });
   }
 
+  var DAY_EVENTS_CAP = 6; // 紙面（計画欄）を圧迫しないための表示上限
+
   function renderEventsInto(rootEl, iso) {
     var box = rootEl.querySelector('.page-events');
     var body = rootEl.querySelector('.page-body');
     if (!box || !body) return;
-    var shown = mergedEventsFor(iso).slice(0, 6);
+    var all = mergedEventsFor(iso);
+    // あふれる場合は最後の1枠を「すべて見る」に使う（隠れた予定にも一覧から必ず到達できるように）
+    var overflow = all.length > DAY_EVENTS_CAP;
+    var shown = overflow ? all.slice(0, DAY_EVENTS_CAP - 1) : all;
     box.innerHTML = '';
     shown.forEach(function (ev) {
       var line = document.createElement('div');
@@ -2622,9 +2669,20 @@
       }
       box.appendChild(line);
     });
-    box.style.display = shown.length ? 'block' : 'none';
+    var rowCount = shown.length;
+    if (overflow) {
+      var moreLine = document.createElement('div');
+      moreLine.className = 'page-event page-event-more';
+      moreLine.style.pointerEvents = 'auto';
+      moreLine.style.cursor = 'pointer';
+      moreLine.textContent = 'ほか ' + (all.length - shown.length) + ' 件（すべて見る）';
+      moreLine.addEventListener('click', function () { openDayEventsList(iso); });
+      box.appendChild(moreLine);
+      rowCount += 1;
+    }
+    box.style.display = rowCount ? 'block' : 'none';
     // 予定のぶんだけ本文（計画＋日記）を下の罫線へずらす（罫線1本=28px）
-    body.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (shown.length * 28) + 'px)';
+    body.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (rowCount * 28) + 'px)';
   }
 
   function loadDayEvents(rootEl, iso, force) {
@@ -2823,6 +2881,57 @@
   // 背景（カードの外）をタップしたら閉じる
   document.getElementById('eventModal').addEventListener('click', function (ev) {
     if (ev.target === this) closeEventEditor();
+  });
+
+  // その日の予定ぜんぶ（表示があふれた分の受け皿。隠れた予定にもここから編集で届く）
+  var dayListIso = null;
+
+  function openDayEventsList(iso) {
+    dayListIso = iso;
+    var d = fromISO(iso);
+    document.getElementById('dayEventsTitle').textContent =
+      (d.getMonth() + 1) + '月' + d.getDate() + '日（' + DOW[d.getDay()] + '）の予定';
+    var listEl = document.getElementById('dayEventsList');
+    listEl.innerHTML = '';
+    mergedEventsFor(iso).forEach(function (ev) {
+      var row = document.createElement('div');
+      row.className = 'del-row' + (ev.local ? ' is-mine' : ' readonly');
+      var time = document.createElement('span');
+      time.className = 'del-time';
+      time.textContent = ev.time || '';
+      var title = document.createElement('span');
+      title.className = 'del-title';
+      title.textContent = ev.title;
+      if (ev.color) title.style.color = ev.color;
+      row.appendChild(time);
+      row.appendChild(title);
+      if (ev.local) {
+        var edit = document.createElement('span');
+        edit.className = 'del-edit';
+        edit.textContent = '✎ なおす';
+        row.appendChild(edit);
+        row.addEventListener('click', function () {
+          closeDayEventsList();
+          openEventEditor(iso, ev.idx);
+        });
+      }
+      listEl.appendChild(row);
+    });
+    document.getElementById('dayEventsModal').style.display = 'flex';
+  }
+
+  function closeDayEventsList() {
+    document.getElementById('dayEventsModal').style.display = 'none';
+  }
+
+  document.getElementById('dayEventsClose').addEventListener('click', closeDayEventsList);
+  document.getElementById('dayEventsAdd').addEventListener('click', function () {
+    var iso = dayListIso;
+    closeDayEventsList();
+    if (iso) openEventEditor(iso, -1);
+  });
+  document.getElementById('dayEventsModal').addEventListener('click', function (ev) {
+    if (ev.target === this) closeDayEventsList();
   });
 
   // ---- メニューと設定 ----
