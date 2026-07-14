@@ -2150,10 +2150,10 @@
   // ユーザーのカレンダー一覧（24時間キャッシュ）。
   // Googleの「日本の祝日」等の祝日カレンダーは、こちらで祝日を印刷済みなので二重表示を避けて除外。
   // 旧スコープ（一覧の権限なし）で連携済みの場合は403になるので、メインのみ＋設定に案内を出す
-  function listGcalCalendars() {
+  function listGcalCalendars(force) {
     try {
       var cached = JSON.parse(localStorage.getItem('pt:gcal-cals') || 'null');
-      if (cached && Array.isArray(cached.ids) && Date.now() - cached.t < 24 * 60 * 60 * 1000) {
+      if (!force && cached && Array.isArray(cached.ids) && Date.now() - cached.t < 24 * 60 * 60 * 1000) {
         return Promise.resolve(cached.ids);
       }
     } catch (e) { /* 壊れたキャッシュは無視 */ }
@@ -2180,11 +2180,11 @@
       });
   }
 
-  function fetchDayEvents(iso) {
+  function fetchDayEvents(iso, force) {
     var dayStart = fromISO(iso);
     var dayEnd = new Date(dayStart);
     dayEnd.setDate(dayStart.getDate() + 1);
-    return listGcalCalendars().then(function (calIds) {
+    return listGcalCalendars(force).then(function (calIds) {
       var fetches = calIds.map(function (calId) {
         var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events' +
           '?timeMin=' + encodeURIComponent(dayStart.toISOString()) +
@@ -2250,13 +2250,13 @@
     body.style.top = 'calc(88px + env(safe-area-inset-top, 0px) + ' + (shown.length * 28) + 'px)';
   }
 
-  function loadDayEvents(rootEl, iso) {
+  function loadDayEvents(rootEl, iso, force) {
     renderEventsInto(rootEl, iso); // まずキャッシュを即表示（オフラインでも見える）
     var native = isNativeApp();
     if (!native && (!gcalConnected() || navigator.onLine === false)) return;
     var cached = readCachedEvents(iso);
-    if (cached && Date.now() - cached.t < 10 * 60 * 1000) return; // 10分は使い回す
-    (native ? fetchDayEventsNative(iso) : fetchDayEvents(iso)).then(function () {
+    if (!force && cached && Date.now() - cached.t < 10 * 60 * 1000) return; // 10分は使い回す
+    (native ? fetchDayEventsNative(iso) : fetchDayEvents(iso, force)).then(function () {
       if (rootEl.isConnected) renderEventsInto(rootEl, iso);
     }).catch(function () { /* オフライン・失効・権限なしは静かに諦める */ });
   }
@@ -2278,13 +2278,13 @@
     }
   }
 
-  function loadMonthEvents(y, m, rootEl) {
+  function loadMonthEvents(y, m, rootEl, force) {
     var native = isNativeApp();
     if (!native && !gcalConnected()) return;
     if (navigator.onLine === false) return;
     var ym = y + '-' + String(m).padStart(2, '0');
     var stamp = parseInt(localStorage.getItem('pt:events-month:' + ym), 10) || 0;
-    if (Date.now() - stamp < 10 * 60 * 1000) return; // 10分は使い回す
+    if (!force && Date.now() - stamp < 10 * 60 * 1000) return; // 10分は使い回す
     var monthStart = new Date(y, m - 1, 1);
     var monthEnd = new Date(y, m, 1);
 
@@ -2302,7 +2302,7 @@
         return buckets;
       });
     } else {
-      fetchPromise = listGcalCalendars().then(function (calIds) {
+      fetchPromise = listGcalCalendars(force).then(function (calIds) {
         var fetches = calIds.map(function (calId) {
           var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events' +
             '?timeMin=' + encodeURIComponent(monthStart.toISOString()) +
@@ -2657,6 +2657,25 @@
       reader.readAsText(file);
     });
   })();
+
+  // ---- フォアグラウンド復帰時にカレンダーを強制更新 ----
+  // 他のアプリでGoogle/iCloudの予定を編集してから手ざわり手帳に戻ってきたとき、
+  // 10分/24時間のキャッシュを待たず即座に反映する
+  var lastForegroundRefresh = 0;
+  function refreshCurrentViewFromForeground() {
+    if (Date.now() - lastForegroundRefresh < 5000) return; // 連続発火のガード
+    lastForegroundRefresh = Date.now();
+    var el = document.getElementById('currentPage');
+    if (!el) return;
+    var v = viewParts(currentView);
+    if (v.type === 'day') loadDayEvents(el, v.iso, true);
+    else if (v.type === 'month') loadMonthEvents(v.y, v.m, el, true);
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') refreshCurrentViewFromForeground();
+  });
+  window.addEventListener('focus', refreshCurrentViewFromForeground);
+  window.addEventListener('pageshow', refreshCurrentViewFromForeground);
 
   // テスト用フック（アプリ動作には不使用）
   window._pt = { rokuyoOf: rokuyoOf };
