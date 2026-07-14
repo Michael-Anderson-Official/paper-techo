@@ -855,6 +855,25 @@
     color: #8a8d99;
     margin-top: 10px;
   }
+  /* 連携などのやり方（開閉できる説明） */
+  .howto { margin-top: 8px; }
+  .howto > summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #5a7d5a;
+    list-style: none;
+    padding: 4px 0;
+  }
+  .howto > summary::before { content: '▶ '; font-size: 10px; }
+  .howto[open] > summary::before { content: '▼ '; }
+  .howto-list {
+    margin: 6px 0 0 0;
+    padding-left: 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #5b5f6b;
+  }
+  .howto-list li { margin-bottom: 4px; }
   .settings-close {
     margin-top: 14px;
     width: 100%;
@@ -1142,6 +1161,17 @@
     <p class="settings-label" style="margin-top:16px;">Googleカレンダー</p>
     <p id="gcalStatus" class="settings-note" style="margin-top:0;"></p>
     <button id="gcalConnectBtn" type="button" class="settings-close" style="margin-top:8px;">Googleカレンダーと連携</button>
+    <details class="howto" id="gcalHowto">
+      <summary>連携のやり方</summary>
+      <ol class="howto-list">
+        <li>上の「Googleカレンダーと連携」を押す</li>
+        <li>使っているGoogleアカウントを選んでサインイン</li>
+        <li>「このアプリはGoogleで確認されていません」と出たら、<b>「詳細」→「（安全でないページ）に移動」</b>を押して進む（開発中のアプリのため出る表示です）</li>
+        <li>カレンダーの<b>読み取り</b>の許可を「続行」でオン</li>
+        <li>連携完了。その日の予定がページに印刷されます（読み取りだけ・書き込みはしません）</li>
+      </ol>
+      <p class="settings-note" style="margin-top:6px;">連携を切るときは、上のボタンが「連携を解除」に変わります。予定のキャッシュも消えます。</p>
+    </details>
     <p class="settings-label" style="margin-top:16px;">日記の書き出し</p>
     <p id="diaryExportStatus" class="settings-note" style="margin-top:0;">書いた日記だけをまとめて、読みやすいテキストファイルにできます。</p>
     <button id="diaryExportBtn" type="button" class="settings-close" style="margin-top:0;">テキストで書き出す</button>
