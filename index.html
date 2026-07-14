@@ -647,6 +647,37 @@
     pointer-events: none;
   }
 
+  /* 二十四節気のちいさな線画（試作）。紙の余白にさりげなく。上=日付欄の右端、下=つまみヒントと逆の左下 */
+  .season-deco {
+    position: absolute;
+    color: var(--ink-soft);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .season-deco svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* 左の綴じ糸のそば（右上はメニューボタンと重なるため避ける） */
+  .season-deco-top {
+    top: 14px;
+    left: 14px;
+    width: 28px;
+    height: 28px;
+  }
+  .season-deco-bottom {
+    left: 14px;
+    bottom: 6px;
+    width: 34px;
+    height: 34px;
+  }
+
   /* 下の道具置き（ツールバー）。紙のタグ風ボタン */
   .toolbar {
     display: flex;
@@ -1200,6 +1231,60 @@
     return localStorage.getItem('pt:rokuyo') !== '0';
   }
 
+  // ---- 二十四節気のイラスト（試作。まず4つだけ。日付は一般的な暦の目安で年により前後1日ずれることがある）----
+  // [開始日, キー]。キーがnullの区間は未対応（イラストなし）。開始日昇順で並べ、iso以下で最後に一致した区間を採用
+  var SEKKI_ILLUST_RANGES = [
+    ['2026-01-01', null],
+    ['2026-07-07', 'shosho'],   // 小暑
+    ['2026-07-22', 'taisho'],   // 大暑
+    ['2026-08-07', 'risshuu'],  // 立秋
+    ['2026-08-23', 'shosho2'],  // 処暑
+    ['2026-09-07', null],
+    ['2027-07-07', 'shosho'],
+    ['2027-07-23', 'taisho'],
+    ['2027-08-08', 'risshuu'],
+    ['2027-08-23', 'shosho2'],
+    ['2027-09-08', null]
+  ];
+
+  function sekkiIllustKey(iso) {
+    var found = null;
+    for (var i = SEKKI_ILLUST_RANGES.length - 1; i >= 0; i--) {
+      if (SEKKI_ILLUST_RANGES[i][0] <= iso) { found = SEKKI_ILLUST_RANGES[i]; break; }
+    }
+    return found ? found[1] : null;
+  }
+
+  // チョークの一筆書き風、線画のみ（currentColorで紙テーマに追従）
+  var SEKKI_SVGS = {
+    // 小暑: 木の枝にとまる蝉
+    shosho: '<svg viewBox="0 0 64 64"><path d="M6 46c10-2 46-2 54 1"/><ellipse cx="30" cy="30" rx="6" ry="11"/>' +
+      '<path d="M30 21c-3-7-11-10-18-8 4 6 10 9 18 8z"/><path d="M30 21c3-7 11-10 18-8-4 6-10 9-18 8z"/>' +
+      '<path d="M27 40c-2 3-5 4-8 4"/><path d="M33 40c2 3 5 4 8 4"/></svg>',
+    // 大暑: ひまわり
+    taisho: '<svg viewBox="0 0 64 64"><path d="M32 40v20"/><path d="M32 52c-4 2-7 6-7 6"/><circle cx="32" cy="26" r="7"/>' +
+      '<path d="M32 15c1 3 1 5 0 8"/><path d="M43 20c-2 2-4 3-7 4"/><path d="M46 30c-3 0-5-1-7-3"/>' +
+      '<path d="M40 40c-2-2-3-4-3-7"/><path d="M24 40c2-2 3-4 3-7"/><path d="M18 30c3 0 5-1 7-3"/>' +
+      '<path d="M21 20c2 2 4 3 7 4"/></svg>',
+    // 立秋: とんぼ
+    risshuu: '<svg viewBox="0 0 64 64"><path d="M14 30c14-4 22-4 36 0"/>' +
+      '<ellipse cx="30" cy="24" rx="12" ry="3.5" transform="rotate(-18 30 24)"/>' +
+      '<ellipse cx="34" cy="36" rx="12" ry="3.5" transform="rotate(14 34 36)"/><circle cx="14" cy="29" r="2.6"/></svg>',
+    // 処暑: すすきと三日月
+    shosho2: '<svg viewBox="0 0 64 64"><path d="M46 14a10 10 0 1 0 0 20 8 8 0 1 1 0-20z"/>' +
+      '<path d="M14 50c2-14 4-24 6-30"/><path d="M22 50c1-16 2-24 2-32"/><path d="M30 50c-1-14 0-22 3-30"/>' +
+      '<path d="M14 50h20"/></svg>'
+  };
+
+  function seasonDecoEl(cls, iso) {
+    var key = sekkiIllustKey(iso);
+    if (!key || !SEKKI_SVGS[key]) return null;
+    var el = document.createElement('div');
+    el.className = 'season-deco ' + cls;
+    el.innerHTML = SEKKI_SVGS[key];
+    return el;
+  }
+
   // 紙の色。CSS変数で紙面・紙の裏・罫線・文字の色味が連動する。
   // [id, 表示名, 見本の背景色, 見本の文字色, premium]
   var PAPER_COLORS = [
@@ -1275,9 +1360,11 @@
     var head = document.createElement('div');
     head.className = 'page-date';
     var iso = null;
+    var repIso = null; // 季節イラスト用の代表日（週・月はページが示す期間の目安の1日）
 
     if (v.type === 'day') {
       iso = v.iso;
+      repIso = iso;
       var d = fromISO(iso);
       var holiday = HOLIDAYS[iso] || '';
       var rokuyo = getRokuyoEnabled() ? rokuyoOf(iso) : '';
@@ -1330,6 +1417,7 @@
       body.appendChild(makeTextarea('diary', keyDiary(iso), 'きょうの日記…'));
       frag.appendChild(body);
     } else if (v.type === 'week') {
+      repIso = addDays(v.iso, 3);
       var wStart = fromISO(v.iso);
       var wEnd = fromISO(addDays(v.iso, 6));
       var rangeStr = (wStart.getMonth() + 1) + '/' + wStart.getDate() + '〜' +
@@ -1340,6 +1428,7 @@
       frag.appendChild(head);
       frag.appendChild(buildWeekGrid(v.iso, interactive));
     } else {
+      repIso = toISO(new Date(v.y, v.m - 1, 15));
       var first = new Date(v.y, v.m - 1, 1);
       head.innerHTML =
         '<span class="big">' + v.y + '年' + v.m + '月</span>' +
@@ -1348,9 +1437,15 @@
       frag.appendChild(buildMonthGrid(v.y, v.m, interactive));
     }
 
+    var topDeco = seasonDecoEl('season-deco-top', repIso);
+    if (topDeco) frag.appendChild(topDeco);
+
     var corner = document.createElement('div');
     corner.className = 'corner-hint';
     frag.appendChild(corner);
+
+    var bottomDeco = seasonDecoEl('season-deco-bottom', repIso);
+    if (bottomDeco) frag.appendChild(bottomDeco);
 
     return { frag: frag, iso: iso };
   }
