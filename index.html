@@ -666,16 +666,16 @@
   }
   /* 左の綴じ糸のそば（右上はメニューボタンと重なるため避ける） */
   .season-deco-top {
-    top: 14px;
-    left: 14px;
-    width: 28px;
-    height: 28px;
+    top: 10px;
+    left: 10px;
+    width: 38px;
+    height: 38px;
   }
   .season-deco-bottom {
-    left: 14px;
-    bottom: 6px;
-    width: 34px;
-    height: 34px;
+    left: 10px;
+    bottom: 4px;
+    width: 44px;
+    height: 44px;
   }
 
   /* 下の道具置き（ツールバー）。紙のタグ風ボタン */
@@ -1255,25 +1255,35 @@
     return found ? found[1] : null;
   }
 
-  // チョークの一筆書き風、線画のみ（currentColorで紙テーマに追従）
+  // チョークの一筆書き風、線画のみ（currentColorで紙テーマに追従）。
+  // 単体の落書きでなく2〜3要素の「小さな情景」として構成（2026-07-14ユーザー要望）
   var SEKKI_SVGS = {
-    // 小暑: 木の枝にとまる蝉
-    shosho: '<svg viewBox="0 0 64 64"><path d="M6 46c10-2 46-2 54 1"/><ellipse cx="30" cy="30" rx="6" ry="11"/>' +
-      '<path d="M30 21c-3-7-11-10-18-8 4 6 10 9 18 8z"/><path d="M30 21c3-7 11-10 18-8-4 6-10 9-18 8z"/>' +
-      '<path d="M27 40c-2 3-5 4-8 4"/><path d="M33 40c2 3 5 4 8 4"/></svg>',
-    // 大暑: ひまわり
-    taisho: '<svg viewBox="0 0 64 64"><path d="M32 40v20"/><path d="M32 52c-4 2-7 6-7 6"/><circle cx="32" cy="26" r="7"/>' +
-      '<path d="M32 15c1 3 1 5 0 8"/><path d="M43 20c-2 2-4 3-7 4"/><path d="M46 30c-3 0-5-1-7-3"/>' +
-      '<path d="M40 40c-2-2-3-4-3-7"/><path d="M24 40c2-2 3-4 3-7"/><path d="M18 30c3 0 5-1 7-3"/>' +
-      '<path d="M21 20c2 2 4 3 7 4"/></svg>',
-    // 立秋: とんぼ
-    risshuu: '<svg viewBox="0 0 64 64"><path d="M14 30c14-4 22-4 36 0"/>' +
-      '<ellipse cx="30" cy="24" rx="12" ry="3.5" transform="rotate(-18 30 24)"/>' +
-      '<ellipse cx="34" cy="36" rx="12" ry="3.5" transform="rotate(14 34 36)"/><circle cx="14" cy="29" r="2.6"/></svg>',
-    // 処暑: すすきと三日月
-    shosho2: '<svg viewBox="0 0 64 64"><path d="M46 14a10 10 0 1 0 0 20 8 8 0 1 1 0-20z"/>' +
-      '<path d="M14 50c2-14 4-24 6-30"/><path d="M22 50c1-16 2-24 2-32"/><path d="M30 50c-1-14 0-22 3-30"/>' +
-      '<path d="M14 50h20"/></svg>'
+    // 小暑: 葉つきの枝にとまる蝉、羽にクロスハッチの線
+    shosho: '<svg viewBox="0 0 80 80"><path d="M6 58c14-3 56-3 68 1"/>' +
+      '<path d="M40 58c2-6 8-10 16-10"/><path d="M52 48c3 1 5 3 6 6"/>' +
+      '<ellipse cx="38" cy="38" rx="7" ry="13"/>' +
+      '<path d="M38 27c-4-9-13-12-22-10 5 7 12 11 22 10z"/><path d="M38 27c4-9 13-12 22-10-5 7-12 11-22 10z"/>' +
+      '<path d="M20 21c2 2 3 4 4 6" stroke-width="1.4"/><path d="M24 19c2 2 4 3 6 4" stroke-width="1.4"/>' +
+      '<path d="M34 50c-2 4-6 5-10 5"/><path d="M42 50c2 4 6 5 10 5"/></svg>',
+    // 大暑: ひまわりとキラキラ光る太陽
+    taisho: '<svg viewBox="0 0 80 80"><path d="M40 50v24"/><path d="M40 64c-5 2-8 7-8 7"/>' +
+      '<circle cx="40" cy="34" r="9"/>' +
+      '<path d="M40 21c1 3 1 6 0 10"/><path d="M53 27c-2 3-5 4-9 5"/><path d="M57 40c-4 0-7-1-9-4"/>' +
+      '<path d="M50 52c-2-3-3-6-3-9"/><path d="M30 52c2-3 3-6 3-9"/><path d="M23 40c4 0 7-1 9-4"/>' +
+      '<path d="M27 27c2 3 5 4 9 5"/>' +
+      '<circle cx="61" cy="16" r="4" stroke-width="1.6"/>' +
+      '<path d="M61 6v4M61 22v4M51 16h4M67 16h4M54 9l3 3M68 23l-3-3M54 23l3-3M68 9l-3 3" stroke-width="1.2"/></svg>',
+    // 立秋: 小さなクロスハッチの雲の下を飛ぶとんぼ
+    risshuu: '<svg viewBox="0 0 80 80"><path d="M14 44c16-5 26-5 42 0"/>' +
+      '<ellipse cx="34" cy="36" rx="14" ry="4" transform="rotate(-16 34 36)"/>' +
+      '<ellipse cx="38" cy="50" rx="14" ry="4" transform="rotate(14 38 50)"/><circle cx="14" cy="43" r="3"/>' +
+      '<path d="M52 18c-6-6-16-4-17 3-5-1-9 3-7 8h27c4-2 3-9-3-11z"/>' +
+      '<path d="M40 22l4 3M46 20l3 4M52 22l3 3" stroke-width="1.2"/></svg>',
+    // 処暑: 三日月とすすき、まわりに小さな星
+    shosho2: '<svg viewBox="0 0 80 80"><path d="M56 12a12 12 0 1 0 0 24 9.5 9.5 0 1 1 0-24z"/>' +
+      '<path d="M17 62c2-17 5-29 7-36"/><path d="M27 62c1-19 2-29 2-38"/><path d="M37 62c-1-17 0-27 4-36"/>' +
+      '<path d="M17 62h24"/>' +
+      '<path d="M14 20l2 4-2 4-2-4z" stroke-width="1.2"/><path d="M22 30l1.5 3-1.5 3-1.5-3z" stroke-width="1.2"/></svg>'
   };
 
   function seasonDecoEl(cls, iso) {
