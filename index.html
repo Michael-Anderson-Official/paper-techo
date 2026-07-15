@@ -43,7 +43,6 @@
     --stitch: rgba(120, 100, 70, 0.4);
     --divider-label: #b08a84;
     --mark: rgba(58, 60, 72, 0.4);
-    --entry-line: #5a8f5a;
     --mg-border: rgba(110, 130, 160, 0.3);
     --shade-rgb: 60, 40, 20; /* めくりの陰影 */
   }
@@ -74,7 +73,6 @@
     --stitch: rgba(255, 255, 255, 0.22);
     --divider-label: #c9a49e;
     --mark: rgba(232, 230, 222, 0.45);
-    --entry-line: #7bcf7b;
     --mg-border: rgba(255, 255, 255, 0.16);
     --shade-rgb: 0, 0, 0;
   }
@@ -99,7 +97,6 @@
     --stitch: rgba(255, 255, 255, 0.14);
     --divider-label: #c88f3a;
     --mark: rgba(255, 164, 31, 0.55);
-    --entry-line: #5fdc6f;
     --mg-border: rgba(255, 176, 46, 0.14);
     --shade-rgb: 0, 0, 0;
   }
@@ -125,7 +122,6 @@
     --stitch: rgba(255, 255, 255, 0.25);
     --divider-label: #d8b8b2;
     --mark: rgba(240, 238, 228, 0.5);
-    --entry-line: #bfe8c4;
     --mg-border: rgba(255, 255, 255, 0.18);
     --shade-rgb: 0, 0, 0;
   }
@@ -561,22 +557,13 @@
     border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
     transform: rotate(-4deg);
   }
-  /* 書き込みがある日: 日付のすぐ下に細い緑線 */
-  .mg-cell .mg-entry-line {
-    position: absolute;
-    left: 4px;
-    top: 25px;
-    width: 18px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--entry-line);
-  }
-  /* マス内の予定（小さな印刷。2件まで＋あふれは+n） */
+  /* マス内の予定（小さな印刷。4件まで＋あふれは+n） */
   .mg-evs {
     position: absolute;
     top: 40px;
     left: 2px;
     right: 2px;
+    bottom: 2px;      /* マスの下端で止め、あふれた分はマス内でクリップ（次の行へはみ出さない） */
     overflow: hidden;
   }
   .mg-ev {
@@ -1790,27 +1777,21 @@
           hEl.textContent = holiday;
           cell.appendChild(hEl);
         }
-        // 書き込みがある日は日付の下に細い緑線で示す
-        if (hasEntry(iso)) {
-          var eline = document.createElement('span');
-          eline.className = 'mg-entry-line';
-          cell.appendChild(eline);
-        }
-        // その日の予定（連携＋自分で書いた分をまとめて3件まで印刷）
+        // その日の予定（連携＋自分で書いた分をまとめて4件まで印刷）
         var mCellEv = mergedEventsFor(iso);
         if (mCellEv.length) {
           var evs = document.createElement('div');
           evs.className = 'mg-evs';
-          mCellEv.slice(0, 3).forEach(function (ev) {
+          mCellEv.slice(0, 4).forEach(function (ev) {
             var line = document.createElement('div');
             line.className = 'mg-ev';
             line.textContent = ev.title;
             evs.appendChild(line);
           });
-          if (mCellEv.length > 3) {
+          if (mCellEv.length > 4) {
             var more = document.createElement('div');
             more.className = 'mg-ev more';
-            more.textContent = '+' + (mCellEv.length - 3);
+            more.textContent = '+' + (mCellEv.length - 4);
             evs.appendChild(more);
           }
           cell.appendChild(evs);
