@@ -560,16 +560,17 @@
   /* マス内の予定（小さな印刷。4件まで＋あふれは+n） */
   .mg-evs {
     position: absolute;
-    top: 40px;
+    top: 30px;        /* 日付のすぐ下から。件数はマスの高さに合わせてJSが調整 */
     left: 2px;
     right: 2px;
-    bottom: 2px;      /* マスの下端で止め、あふれた分はマス内でクリップ（次の行へはみ出さない） */
+    bottom: 2px;      /* マスの下端で止め、収まらない分はJSが「+n」にまとめる */
     overflow: hidden;
   }
+  .mg-evs.below-holiday { top: 42px; } /* 祝日名がある日は名称の下から */
   .mg-ev {
     font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif; /* 予定は転記したもの。書く字に追従（page-eventと同じ方針） */
     font-size: 9px;
-    line-height: 12px;
+    line-height: 11px;
     color: var(--print);
     white-space: nowrap;
     overflow: hidden;
@@ -1777,23 +1778,13 @@
           hEl.textContent = holiday;
           cell.appendChild(hEl);
         }
-        // その日の予定（連携＋自分で書いた分をまとめて4件まで印刷）
+        // その日の予定。中身はfitMonthCells()がマスの高さに合わせて後から入れる
+        // （収まる件数だけ表示・最大4件・あふれは「+n」。切り落とさない）
         var mCellEv = mergedEventsFor(iso);
         if (mCellEv.length) {
           var evs = document.createElement('div');
-          evs.className = 'mg-evs';
-          mCellEv.slice(0, 4).forEach(function (ev) {
-            var line = document.createElement('div');
-            line.className = 'mg-ev';
-            line.textContent = ev.title;
-            evs.appendChild(line);
-          });
-          if (mCellEv.length > 4) {
-            var more = document.createElement('div');
-            more.className = 'mg-ev more';
-            more.textContent = '+' + (mCellEv.length - 4);
-            evs.appendChild(more);
-          }
+          evs.className = 'mg-evs' + (holiday ? ' below-holiday' : '');
+          evs._titles = mCellEv.map(function (ev) { return ev.title; });
           cell.appendChild(evs);
         }
         if (monthSel === iso) cell.classList.add('selected');
@@ -1815,6 +1806,43 @@
       })(day);
     }
     return grid;
+  }
+
+  // 月マスの予定を、マスの高さに合わせて「収まる件数だけ」入れる。
+  // 最大4件、あふれは最後の行を「+n」に。切り落とさない（レイアウト後に呼ぶ）
+  var MG_LINE_H = 11; // .mg-ev の line-height と一致させる
+  function fitMonthCells(root) {
+    root = root || document.getElementById('currentPage');
+    if (!root) return;
+    var evsList = root.querySelectorAll('.mg-evs');
+    for (var e = 0; e < evsList.length; e++) {
+      var evs = evsList[e];
+      var titles = evs._titles || [];
+      if (!titles.length) continue;
+      var avail = evs.clientHeight; // top/bottomで決まる実際の高さ
+      var maxLines = Math.max(1, Math.floor(avail / MG_LINE_H));
+      var n = titles.length;
+      var showEvents, more;
+      if (n <= maxLines && n <= 4) {
+        showEvents = n; more = 0;                 // 4件以下で全部収まる
+      } else {
+        showEvents = Math.max(1, Math.min(4, maxLines - 1)); // +n用に1行残す
+        more = n - showEvents;
+      }
+      evs.innerHTML = '';
+      for (var i = 0; i < showEvents; i++) {
+        var line = document.createElement('div');
+        line.className = 'mg-ev';
+        line.textContent = titles[i];
+        evs.appendChild(line);
+      }
+      if (more > 0) {
+        var mm = document.createElement('div');
+        mm.className = 'mg-ev more';
+        mm.textContent = '+' + more;
+        evs.appendChild(mm);
+      }
+    }
   }
 
   // 週の見開き。startIsoからの7日を横1行ずつ並べる。タップでその日のページへ（すでに情報は出ているので1回タップで直行）
@@ -1932,6 +1960,8 @@
     if (rpB) rpB.style.display = isDay ? '' : 'none';
     var tdB = document.getElementById('todayBtn');
     if (tdB) tdB.textContent = isDay ? '今日' : (type === 'week' ? '今週' : '今月');
+    // 月ビューが現在ページになったら、マスの高さに合わせて予定件数を調整（レイアウト後にrAFで）
+    if (type === 'month') requestAnimationFrame(function () { fitMonthCells(); });
   }
 
   // ---- ページめくり ----
