@@ -1286,7 +1286,7 @@
   // 週の始まり（0=日〜6=土）。月のカレンダーの列順・週見開きの範囲に効く
   function getWeekStart() {
     var v = parseInt(localStorage.getItem('pt:weekStart'), 10);
-    return (v >= 0 && v <= 6) ? v : 0;
+    return (v >= 0 && v <= 6) ? v : 1; // 既定は月曜始まり
   }
 
   // isoを含む週の始まりの日（設定の週の始まりに追従）。週ビューの正規化に使う
@@ -3077,10 +3077,11 @@
     function renderChips() {
       chips.innerHTML = '';
       var ws = getWeekStart();
-      DOW.forEach(function (name, i) {
+      // 月曜始まりの並びで選べるように（月火水木金土日）
+      [1, 2, 3, 4, 5, 6, 0].forEach(function (i) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.textContent = name;
+        b.textContent = DOW[i];
         b.className = i === ws ? 'active' : '';
         b.addEventListener('click', function () {
           localStorage.setItem('pt:weekStart', String(i));
