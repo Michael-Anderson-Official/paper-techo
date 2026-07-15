@@ -43,6 +43,7 @@
     --stitch: rgba(120, 100, 70, 0.4);
     --divider-label: #b08a84;
     --mark: rgba(58, 60, 72, 0.4);
+    --entry-line: #5a8f5a;
     --mg-border: rgba(110, 130, 160, 0.3);
     --shade-rgb: 60, 40, 20; /* めくりの陰影 */
   }
@@ -73,6 +74,7 @@
     --stitch: rgba(255, 255, 255, 0.22);
     --divider-label: #c9a49e;
     --mark: rgba(232, 230, 222, 0.45);
+    --entry-line: #7bcf7b;
     --mg-border: rgba(255, 255, 255, 0.16);
     --shade-rgb: 0, 0, 0;
   }
@@ -97,6 +99,7 @@
     --stitch: rgba(255, 255, 255, 0.14);
     --divider-label: #c88f3a;
     --mark: rgba(255, 164, 31, 0.55);
+    --entry-line: #5fdc6f;
     --mg-border: rgba(255, 176, 46, 0.14);
     --shade-rgb: 0, 0, 0;
   }
@@ -122,6 +125,7 @@
     --stitch: rgba(255, 255, 255, 0.25);
     --divider-label: #d8b8b2;
     --mark: rgba(240, 238, 228, 0.5);
+    --entry-line: #bfe8c4;
     --mg-border: rgba(255, 255, 255, 0.18);
     --shade-rgb: 0, 0, 0;
   }
@@ -350,6 +354,19 @@
     overflow: hidden;
     color: var(--divider-label);
   }
+  /* 「予定」見出し（令和8年の行の左余白。タスク/日記のラベルと同じ体裁） */
+  .plan-gutter-label {
+    position: absolute;
+    left: 13px;
+    top: 63px;
+    max-width: 32px;
+    font-size: 8px;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    color: var(--divider-label);
+    pointer-events: none;
+  }
   /* 日記の非表示（設定で切替。他人に予定を見せるとき日記を隠せる） */
   .page-body.diary-collapsed .page-text.diary { display: none; }
 
@@ -544,16 +561,15 @@
     border-radius: 52% 46% 50% 48% / 48% 52% 46% 52%;
     transform: rotate(-4deg);
   }
-  /* 書き込みがある日: 鉛筆の短い線（マス下端。予定表示と重ならない位置） */
-  .mg-cell .mark {
+  /* 書き込みがある日: 日付のすぐ下に細い緑線 */
+  .mg-cell .mg-entry-line {
     position: absolute;
-    left: 7px;
-    bottom: 4px;
-    transform: rotate(-2deg);
-    width: 16px;
-    height: 3px;
-    border-radius: 2px;
-    background: var(--mark);
+    left: 4px;
+    top: 25px;
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--entry-line);
   }
   /* マス内の予定（小さな印刷。2件まで＋あふれは+n） */
   .mg-evs {
@@ -746,6 +762,9 @@
     .leaf .face.back { border-radius: 0; }
     .page-date {
       top: calc(22px + env(safe-area-inset-top, 0px));
+    }
+    .plan-gutter-label {
+      top: calc(63px + env(safe-area-inset-top, 0px));
     }
     .page-body {
       top: calc(88px + env(safe-area-inset-top, 0px));
@@ -1421,7 +1440,8 @@
     settingsStat:      { adult: '利用状況の統計',               kid: 'つかいかたの統計' },
     settingsStep:      { adult: '時間の刻み',                   kid: '時間のきざみ' },
     todoLabel:         { adult: 'タスク',                       kid: 'やること' },
-    todoAdd:           { adult: '＋ タスクを追加',              kid: '＋ やることを書く' }
+    todoAdd:           { adult: '＋ タスクを追加',              kid: '＋ やることを書く' },
+    planLabel:         { adult: '予定',                         kid: 'よてい' }
   };
   function tx(key, vars) {
     var w = WORDS[key];
@@ -1580,6 +1600,12 @@
         '</span>';
       frag.appendChild(head);
 
+      // 「予定」の見出しラベル（令和8年の行・左の余白。タスク/日記と同じ見た目）
+      var planLabel = document.createElement('div');
+      planLabel.className = 'plan-gutter-label';
+      planLabel.textContent = tx('planLabel');
+      frag.appendChild(planLabel);
+
       // 本文: 上=きょうの計画（時間つき予定・タップで書く）、区切り線、下=日記
       var body = document.createElement('div');
       body.className = 'page-body';
@@ -1713,12 +1739,6 @@
         evEl.appendChild(moreLine);
       }
     }
-    if (hasEntry(iso)) {
-      var note = document.createElement('div');
-      note.className = 'mdp-note';
-      note.textContent = '✎ この日には書き込みがあります';
-      evEl.appendChild(note);
-    }
     panel.style.display = 'block';
   }
 
@@ -1770,26 +1790,27 @@
           hEl.textContent = holiday;
           cell.appendChild(hEl);
         }
+        // 書き込みがある日は日付の下に細い緑線で示す
         if (hasEntry(iso)) {
-          var mark = document.createElement('span');
-          mark.className = 'mark';
-          cell.appendChild(mark);
+          var eline = document.createElement('span');
+          eline.className = 'mg-entry-line';
+          cell.appendChild(eline);
         }
-        // その日の予定（連携＋自分で書いた分をまとめて2件まで印刷）
+        // その日の予定（連携＋自分で書いた分をまとめて3件まで印刷）
         var mCellEv = mergedEventsFor(iso);
         if (mCellEv.length) {
           var evs = document.createElement('div');
           evs.className = 'mg-evs';
-          mCellEv.slice(0, 2).forEach(function (ev) {
+          mCellEv.slice(0, 3).forEach(function (ev) {
             var line = document.createElement('div');
             line.className = 'mg-ev';
             line.textContent = ev.title;
             evs.appendChild(line);
           });
-          if (mCellEv.length > 2) {
+          if (mCellEv.length > 3) {
             var more = document.createElement('div');
             more.className = 'mg-ev more';
-            more.textContent = '+' + (mCellEv.length - 2);
+            more.textContent = '+' + (mCellEv.length - 3);
             evs.appendChild(more);
           }
           cell.appendChild(evs);
