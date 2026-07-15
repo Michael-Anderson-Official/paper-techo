@@ -317,6 +317,59 @@
     color: var(--ink-soft);
   }
   .todo-add .todo-text { color: var(--ink-soft); }
+
+  /* 勉強欄: 手ざわり計画表から「印刷」される勉強計画。
+     予定と同じく“印刷されたもの”＝本文は編集不可。ただし○（できた）のしるしだけは
+     自分のものなので、しるしをタップして付け外しできる（doneはpk:feed:へ書き戻す） */
+  .study-area { flex: none; max-height: 116px; overflow-y: auto; touch-action: pan-y; }
+  .study-area.is-empty { display: none; }
+  .study-row {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    min-height: 28px;
+    padding: 3px 12px 3px 56px; /* 本文は赤線の右（予定・タスク・日記と同じ書き出し位置） */
+  }
+  /* しるし（○）は綴じ糸と赤線の間の余白に。タップの当たりを広めに取る */
+  .study-mark {
+    position: absolute;
+    left: 15px;
+    top: 4px;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+  }
+  .study-mark::before { /* 付いていないときのうっすらした枠 */
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1.5px solid rgba(122, 158, 196, 0.35);
+    border-radius: 50%;
+  }
+  .study-row.done .study-mark::before { display: none; }
+  .study-row.done .study-mark::after { /* 付いたときの赤鉛筆の○ */
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2.5px solid var(--today-ring);
+    border-radius: 48% 52% 46% 54% / 54% 46% 52% 48%;
+    transform: rotate(-4deg);
+  }
+  .study-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif;
+    font-size: 16px;
+    line-height: 22px;
+    color: var(--print); /* 印刷された予定と同じ色味 */
+  }
+  .study-text .subj {
+    font-size: 11px;
+    color: var(--print-soft);
+    margin-right: 5px;
+    white-space: nowrap;
+  }
+  .study-row.done .study-text { color: var(--ink-soft); }
   .plan-empty {
     height: 28px;
     line-height: 28px;
@@ -1429,7 +1482,8 @@
     settingsStep:      { adult: '時間の刻み',                   kid: '時間のきざみ' },
     todoLabel:         { adult: 'タスク',                       kid: 'やること' },
     todoAdd:           { adult: '＋ タスクを追加',              kid: '＋ やることを書く' },
-    planLabel:         { adult: '予定',                         kid: 'よてい' }
+    planLabel:         { adult: '予定',                         kid: 'よてい' },
+    studyLabel:        { adult: '勉強',                         kid: 'べんきょう' }
   };
   function tx(key, vars) {
     var w = WORDS[key];
@@ -1531,6 +1585,24 @@
     else localStorage.removeItem(keyTodos(iso));
   }
 
+  // 手ざわり計画表（別アプリ・同じオリジン）から届く勉強計画のフィード。
+  // pk:feed:ISO = {v:1, updated, items:[{id, subject, text, done}]}。
+  // 本文（text/subject）は計画表が持ち主で手帳からは書き換えない。○（done）だけは手帳から付け外しできる。
+  function keyStudyFeed(iso) { return 'pk:feed:' + iso; }
+  function readStudyFeed(iso) {
+    try {
+      var f = JSON.parse(localStorage.getItem(keyStudyFeed(iso)) || 'null');
+      return (f && f.v === 1 && Array.isArray(f.items)) ? f : null;
+    } catch (e) { return null; }
+  }
+  function setStudyDone(iso, id, done) {
+    var f = readStudyFeed(iso);
+    if (!f) return;
+    f.items.forEach(function (it) { if (it.id === id) it.done = !!done; });
+    f.updated = new Date().toISOString();
+    localStorage.setItem(keyStudyFeed(iso), JSON.stringify(f));
+  }
+
   // 時刻文字列の先頭HH:MMを分に。無ければ-1（終日＝先頭に並ぶ）
   function timeSortKey(timeStr) {
     var m = /^(\d{1,2}):(\d{2})/.exec(timeStr || '');
@@ -1610,6 +1682,21 @@
         });
       }
       body.appendChild(planArea);
+
+      // 勉強欄: 手ざわり計画表から「印刷」される。中身はbuildStudyが入れる。
+      // 計画がない日は丸ごと隠れる（is-empty）ので、予定→タスクの並びを邪魔しない
+      var studyDivider = document.createElement('div');
+      studyDivider.className = 'page-divider study-divider';
+      var studyLabel = document.createElement('span');
+      studyLabel.className = 'label';
+      studyLabel.textContent = tx('studyLabel');
+      studyDivider.appendChild(studyLabel);
+      body.appendChild(studyDivider);
+
+      var studyArea = document.createElement('div');
+      studyArea.className = 'study-area';
+      body.appendChild(studyArea);
+      buildStudy(studyArea, studyDivider, iso, interactive);
 
       // やること（ToDo）: チェック付きの欄。予定と日記の間
       var todoDivider = document.createElement('div');
@@ -2812,6 +2899,54 @@
     });
   }
 
+  // 勉強欄を組み立てる。手ざわり計画表のフィード（pk:feed:ISO）を「印刷」する。
+  // 本文は編集不可（計画表が持ち主）。○のしるしだけタップで付け外しできる。
+  // 計画がない日は divider ごと隠す（is-empty）
+  function buildStudy(container, divider, iso, interactive) {
+    container.innerHTML = '';
+    var feed = readStudyFeed(iso);
+    var items = (feed && feed.items) || [];
+    container.classList.toggle('is-empty', items.length === 0);
+    divider.style.display = items.length ? '' : 'none';
+    items.forEach(function (it) {
+      var row = document.createElement('div');
+      row.className = 'study-row' + (it.done ? ' done' : '');
+      var mark = document.createElement('span');
+      mark.className = 'study-mark';
+      mark.setAttribute('role', 'button');
+      mark.setAttribute('aria-label', 'できたのしるし');
+      var text = document.createElement('span');
+      text.className = 'study-text';
+      if (it.subject) {
+        var subj = document.createElement('span');
+        subj.className = 'subj';
+        subj.textContent = it.subject;
+        text.appendChild(subj);
+      }
+      text.appendChild(document.createTextNode(it.text || ''));
+      row.appendChild(mark);
+      row.appendChild(text);
+      if (interactive) {
+        mark.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var now = !row.classList.contains('done');
+          row.classList.toggle('done', now);
+          setStudyDone(iso, it.id, now);
+          flashSaved();
+        });
+      }
+      container.appendChild(row);
+    });
+  }
+
+  // 現在ページの勉強欄だけを組み直す（計画表アプリ側で計画が変わった直後の反映用）
+  function refreshStudyOnPage(rootEl, iso) {
+    if (!rootEl) return;
+    var area = rootEl.querySelector('.study-area');
+    var divider = rootEl.querySelector('.study-divider');
+    if (area && divider) buildStudy(area, divider, iso, true);
+  }
+
   // やること（ToDo）欄を組み立てる。各行=チェック＋テキスト。空きの追加行が末尾に1つ。
   // DOMを正として編集し、変更のたびに保存する（インデックス管理をしない）
   function buildTodos(container, iso) {
@@ -3614,7 +3749,7 @@
     var el = document.getElementById('currentPage');
     if (!el) return;
     var v = viewParts(currentView);
-    if (v.type === 'day') loadDayEvents(el, v.iso, true);
+    if (v.type === 'day') { loadDayEvents(el, v.iso, true); refreshStudyOnPage(el, v.iso); }
     else if (v.type === 'month') loadMonthEvents(v.y, v.m, el, true);
     else if (v.type === 'week') loadWeekEvents(v.iso, el, true);
   }
@@ -3623,6 +3758,15 @@
   });
   window.addEventListener('focus', refreshCurrentViewFromForeground);
   window.addEventListener('pageshow', refreshCurrentViewFromForeground);
+
+  // 手ざわり計画表（同じオリジンの別タブ）が計画を書き換えたら、開いている日ページに反映する
+  window.addEventListener('storage', function (e) {
+    if (!e.key || e.key.indexOf('pk:feed:') !== 0) return;
+    var el = document.getElementById('currentPage');
+    if (!el) return;
+    var v = viewParts(currentView);
+    if (v.type === 'day' && 'pk:feed:' + v.iso === e.key) refreshStudyOnPage(el, v.iso);
+  });
 
   // テスト用フック（アプリ動作には不使用）
   window._pt = { rokuyoOf: rokuyoOf };
