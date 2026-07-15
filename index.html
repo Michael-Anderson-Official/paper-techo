@@ -281,16 +281,20 @@
     touch-action: pan-y;
   }
   .todo-row {
+    position: relative;
     display: flex;
     align-items: center;
     height: 28px;
-    padding-left: 30px; /* チェックを綴じ糸と赤線の間に置く */
+    padding-left: 56px; /* テキストは赤線の右（予定・日記と同じ書き出し位置） */
   }
   .todo-check {
-    flex: none;
-    width: 15px;
-    height: 15px;
-    margin: 0 11px 0 0;
+    position: absolute;
+    left: 18px; /* チェックは綴じ糸と赤線の間の余白に。赤線(46px)に被らない */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    margin: 0;
     accent-color: var(--today-ring);
     cursor: pointer;
   }
@@ -2816,9 +2820,6 @@
 
     var addRow = document.createElement('div');
     addRow.className = 'todo-row todo-add';
-    var spacer = document.createElement('span');
-    spacer.className = 'todo-check';
-    spacer.style.visibility = 'hidden';
     var addInp = document.createElement('input');
     addInp.type = 'text';
     addInp.className = 'todo-text';
@@ -2837,7 +2838,6 @@
       if (e.key === 'Enter') { e.preventDefault(); commitAdd(true); }
     });
     addInp.addEventListener('blur', function () { commitAdd(false); });
-    addRow.appendChild(spacer);
     addRow.appendChild(addInp);
 
     readTodos(iso).forEach(function (td) {
