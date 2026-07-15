@@ -1130,7 +1130,10 @@
 <div id="settingsModal" class="settings-modal" style="display:none;">
   <div class="settings-card">
     <h2>設定</h2>
-    <p class="settings-label">週の始まり</p>
+    <p class="settings-label">ことばづかい</p>
+    <div id="wordingChips" class="week-chips"></div>
+    <p class="settings-note">画面の文言を「大人向け（漢字）」か「やさしい（ひらがな多め）」に切り替えます。</p>
+    <p class="settings-label" style="margin-top:16px;">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
     <p class="settings-label" style="margin-top:16px;">紙の色</p>
@@ -1143,7 +1146,7 @@
       <button id="rokuyoToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">六曜</button>
     </div>
     <p class="settings-note">大安・仏滅などをページと月のカレンダーに印刷します。</p>
-    <p class="settings-label" style="margin-top:16px;">時間のきざみ</p>
+    <p class="settings-label" id="stLabelStep" style="margin-top:16px;">時間のきざみ</p>
     <div id="timeStepChips" class="week-chips"></div>
     <p class="settings-note">予定を書くときの時間の刻み幅です。</p>
     <p class="settings-label" style="margin-top:16px;">日記を非表示</p>
@@ -1151,7 +1154,7 @@
       <button id="diaryHiddenToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">日記を隠す</button>
     </div>
     <p class="settings-note">オンにすると、日ページの日記が隠れます。人に予定を見せるとき、日記を見られたくないときに。</p>
-    <p class="settings-label" style="margin-top:16px;">つかいかたの統計</p>
+    <p class="settings-label" id="stLabelStat" style="margin-top:16px;">つかいかたの統計</p>
     <div class="week-chips">
       <button id="statsToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">統計を送る</button>
     </div>
@@ -1198,8 +1201,8 @@
       <span class="event-colon">:</span>
       <select id="evEndM" class="event-sel" aria-label="おわり 分"></select>
     </div>
-    <p class="settings-note">時間はあけてもだいじょうぶ（終日あつかい）。</p>
-    <p class="settings-label" style="margin-top:14px;">よてい</p>
+    <p class="settings-note" id="evTimeNote">時間はあけてもだいじょうぶ（終日あつかい）。</p>
+    <p class="settings-label" id="evLabelTitle" style="margin-top:14px;">よてい</p>
     <input id="evTitle" type="text" class="event-title-input" placeholder="なにをする？" maxlength="60">
     <div style="display:flex; gap:8px;">
       <button id="evSave" type="button" class="settings-close">保存</button>
@@ -1348,6 +1351,45 @@
   // 日記を非表示にするか（設定で切替。既定は表示）
   function getDiaryHidden() {
     return localStorage.getItem('pt:diaryHidden') === '1';
+  }
+
+  // ことばづかい: 'adult'（大人向け・漢字）/ 'kid'（やさしい・ひらがな）。既定は大人向け
+  function getWordMode() {
+    return localStorage.getItem('pt:wording') === 'kid' ? 'kid' : 'adult';
+  }
+  var WORDS = {
+    planPlaceholder:   { adult: '今日の予定を入力…',            kid: 'きょうの計画を書く…' },
+    diaryPlaceholder:  { adult: '今日の日記…',                  kid: 'きょうの日記…' },
+    evTitlePlaceholder:{ adult: '内容を入力',                   kid: 'なにをする？' },
+    evTimeNote:        { adult: '時間は空欄でも構いません（終日扱い）。', kid: '時間はあけてもだいじょうぶ（終日あつかい）。' },
+    evLabelTitle:      { adult: '内容',                         kid: 'よてい' },
+    evAddTitle:        { adult: '予定を追加',                   kid: 'よていを書く' },
+    evEditTitle:       { adult: '予定を編集',                   kid: 'よていをなおす' },
+    dayEventsAdd:      { adult: '＋予定を追加',                 kid: '＋よていを書く' },
+    editMark:          { adult: '✎ 編集',                      kid: '✎ なおす' },
+    moreN:             { adult: 'ほか {n} 件（すべて表示）',    kid: 'ほか {n} 件（すべて見る）' },
+    close:             { adult: '閉じる',                       kid: 'とじる' },
+    settingsStat:      { adult: '利用状況の統計',               kid: 'つかいかたの統計' },
+    settingsStep:      { adult: '時間の刻み',                   kid: '時間のきざみ' }
+  };
+  function tx(key, vars) {
+    var w = WORDS[key];
+    var s = w ? w[getWordMode()] : '';
+    if (vars) { for (var k in vars) s = s.replace('{' + k + '}', vars[k]); }
+    return s;
+  }
+  // 常に表示され得る静的DOMの文言をことばづかいに合わせて更新する
+  function applyWording() {
+    function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+    setText('evTimeNote', tx('evTimeNote'));
+    setText('evLabelTitle', tx('evLabelTitle'));
+    var evt = document.getElementById('evTitle'); if (evt) evt.placeholder = tx('evTitlePlaceholder');
+    setText('evCancel', tx('close'));
+    setText('dayEventsAdd', tx('dayEventsAdd'));
+    setText('dayEventsClose', tx('close'));
+    setText('settingsClose', tx('close'));
+    setText('stLabelStat', tx('settingsStat'));
+    setText('stLabelStep', tx('settingsStep'));
   }
 
   // 紙の色。CSS変数で紙面・紙の裏・罫線・文字の色味が連動する。
@@ -1501,7 +1543,7 @@
 
       var diaryTa = document.createElement('textarea');
       diaryTa.className = 'page-text diary';
-      diaryTa.placeholder = interactive ? 'きょうの日記…' : '';
+      diaryTa.placeholder = interactive ? tx('diaryPlaceholder') : '';
       diaryTa.value = localStorage.getItem(keyDiary(iso)) || '';
       diaryTa.spellcheck = false;
       if (interactive) {
@@ -2325,6 +2367,7 @@
   // ---- 起動 ----
   applyPaperColor();
   applyWriteFont();
+  applyWording();
   renderPage(document.getElementById('currentPage'), currentView, true);
   statBump('open');
   statsFlush();
@@ -2673,7 +2716,7 @@
       // 空のときは「タップで予定を書く」案内（この案内は罫線1行ぶん。残りの空きもタップで追加）
       var empty = document.createElement('div');
       empty.className = 'plan-empty';
-      empty.textContent = 'きょうの計画を書く…';
+      empty.textContent = tx('planPlaceholder');
       box.appendChild(empty);
       return;
     }
@@ -2714,7 +2757,7 @@
       var moreLine = document.createElement('div');
       moreLine.className = 'page-event page-event-more';
       moreLine.style.cursor = 'pointer';
-      moreLine.textContent = 'ほか ' + (all.length - shown.length) + ' 件（すべて見る）';
+      moreLine.textContent = tx('moreN', { n: (all.length - shown.length) });
       moreLine.addEventListener('click', function () { openDayEventsList(iso); });
       box.appendChild(moreLine);
     }
@@ -2903,7 +2946,7 @@
     setTimeSelectors(document.getElementById('evStartH'), document.getElementById('evStartM'), ev.s || '', '終日');
     setTimeSelectors(document.getElementById('evEndH'), document.getElementById('evEndM'), ev.e || '', 'なし');
     document.getElementById('evTitle').value = ev.t || '';
-    document.getElementById('eventModalTitle').textContent = idx >= 0 ? 'よていをなおす' : 'よていを書く';
+    document.getElementById('eventModalTitle').textContent = idx >= 0 ? tx('evEditTitle') : tx('evAddTitle');
     document.getElementById('evDelete').style.display = idx >= 0 ? '' : 'none';
     document.getElementById('eventModal').style.display = 'flex';
     setTimeout(function () { document.getElementById('evTitle').focus(); }, 60);
@@ -2987,7 +3030,7 @@
       if (ev.local) {
         var edit = document.createElement('span');
         edit.className = 'del-edit';
-        edit.textContent = '✎ なおす';
+        edit.textContent = tx('editMark');
         row.appendChild(edit);
         row.addEventListener('click', function () {
           closeDayEventsList();
@@ -3123,6 +3166,28 @@
       flashSaved();
     });
 
+    // ことばづかい（大人向け / やさしい）
+    var wordingChips = document.getElementById('wordingChips');
+    function renderWordingChips() {
+      wordingChips.innerHTML = '';
+      var cur = getWordMode();
+      [['adult', '大人向け'], ['kid', 'やさしい']].forEach(function (opt) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = opt[1];
+        b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
+        b.className = cur === opt[0] ? 'active' : '';
+        b.addEventListener('click', function () {
+          localStorage.setItem('pt:wording', opt[0]);
+          applyWording();
+          renderWordingChips();
+          renderPage(document.getElementById('currentPage'), currentView, true);
+          flashSaved();
+        });
+        wordingChips.appendChild(b);
+      });
+    }
+
     // 時間のきざみ（1分 / 5分）
     var timeStepChips = document.getElementById('timeStepChips');
     function renderTimeStepChips() {
@@ -3169,6 +3234,7 @@
 
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
+      renderWordingChips();
       renderChips();
       renderPaperChips();
       renderFontChips();
