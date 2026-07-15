@@ -341,11 +341,10 @@
   }
   .page-divider .label {
     position: absolute;
-    left: 6px;         /* 綴じ糸(10px手前)〜赤線(46px)の余白に収める */
-    width: 38px;
+    left: 13px;        /* 綴じ糸(〜12.5px)〜赤線(46px)の余白にちょうど収める */
+    max-width: 32px;
     bottom: 3px;
-    text-align: center;
-    font-size: 9px;    /* 3〜4文字（タスク/やること）でも赤線に被らない大きさ */
+    font-size: 8px;    /* 3〜4文字（タスク/やること）でも綴じ糸・赤線どちらにも被らない大きさ */
     letter-spacing: 0;
     white-space: nowrap;
     overflow: hidden;
