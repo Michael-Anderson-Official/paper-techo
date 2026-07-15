@@ -341,10 +341,14 @@
   }
   .page-divider .label {
     position: absolute;
-    left: 17px; /* 綴じステッチと赤線の間の余白に置く */
+    left: 6px;         /* 綴じ糸(10px手前)〜赤線(46px)の余白に収める */
+    width: 38px;
     bottom: 3px;
-    font-size: 11px;
-    letter-spacing: 0.12em;
+    text-align: center;
+    font-size: 9px;    /* 3〜4文字（タスク/やること）でも赤線に被らない大きさ */
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
     color: var(--divider-label);
   }
   /* 日記の非表示（設定で切替。他人に予定を見せるとき日記を隠せる） */
