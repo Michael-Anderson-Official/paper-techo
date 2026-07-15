@@ -302,15 +302,7 @@
     letter-spacing: 0.12em;
     color: var(--divider-label);
   }
-  /* 日記の開閉（他人に予定を見せるとき、日記を隠せる） */
-  .page-divider.diary-toggle { cursor: pointer; }
-  .diary-hint {
-    position: absolute;
-    right: 16px;
-    bottom: 3px;
-    font-size: 11px;
-    color: var(--ink-soft);
-  }
+  /* 日記の非表示（設定で切替。他人に予定を見せるとき日記を隠せる） */
   .page-body.diary-collapsed .page-text.diary { display: none; }
 
   /* その日の予定の1行（手帳に印刷されている風）。計画欄(.plan-area)の中に並ぶ */
@@ -1153,6 +1145,11 @@
     <p class="settings-label" style="margin-top:16px;">時間のきざみ</p>
     <div id="timeStepChips" class="week-chips"></div>
     <p class="settings-note">予定を書くときの時間の刻み幅です。</p>
+    <p class="settings-label" style="margin-top:16px;">日記を非表示</p>
+    <div class="week-chips">
+      <button id="diaryHiddenToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">日記を隠す</button>
+    </div>
+    <p class="settings-note">オンにすると、日ページの日記が隠れます。人に予定を見せるとき、日記を見られたくないときに。</p>
     <p class="settings-label" style="margin-top:16px;">つかいかたの統計</p>
     <div class="week-chips">
       <button id="statsToggle" type="button" style="width:auto; padding:0 16px; border-radius:20px;">統計を送る</button>
@@ -1343,6 +1340,11 @@
     return localStorage.getItem('pt:timestep') === '1' ? 1 : 5;
   }
 
+  // 日記を非表示にするか（設定で切替。既定は表示）
+  function getDiaryHidden() {
+    return localStorage.getItem('pt:diaryHidden') === '1';
+  }
+
   // 紙の色。CSS変数で紙面・紙の裏・罫線・文字の色味が連動する。
   // [id, 表示名, 見本の背景色, 見本の文字色, premium]
   var PAPER_COLORS = [
@@ -1485,14 +1487,11 @@
       body.appendChild(planArea);
 
       var divider = document.createElement('div');
-      divider.className = 'page-divider diary-toggle';
+      divider.className = 'page-divider';
       var dLabel = document.createElement('span');
       dLabel.className = 'label';
       dLabel.textContent = '日記';
       divider.appendChild(dLabel);
-      var diaryHint = document.createElement('span');
-      diaryHint.className = 'diary-hint';
-      divider.appendChild(diaryHint);
       body.appendChild(divider);
 
       var diaryTa = document.createElement('textarea');
@@ -1512,21 +1511,8 @@
       }
       body.appendChild(diaryTa);
 
-      // 日記は既定で閉じる（予定を見せるとき、日記が最初から隠れているように）。
-      // 「日記」の区切りをタップで開閉する
-      var diaryOpen = false;
-      function applyDiaryState() {
-        body.classList.toggle('diary-collapsed', !diaryOpen);
-        diaryHint.textContent = diaryOpen ? '▼ とじる' : '▶ ひらく';
-      }
-      if (interactive) {
-        divider.addEventListener('click', function () {
-          diaryOpen = !diaryOpen;
-          applyDiaryState();
-          if (diaryOpen) setTimeout(function () { diaryTa.focus(); }, 60);
-        });
-      }
-      applyDiaryState();
+      // 日記の表示/非表示は設定「日記を非表示」で切り替える（予定を見せるとき隠せる）
+      body.classList.toggle('diary-collapsed', getDiaryHidden());
       frag.appendChild(body);
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
@@ -3124,6 +3110,18 @@
       flashSaved();
     });
 
+    // 日記を非表示トグル
+    var diaryHiddenToggle = document.getElementById('diaryHiddenToggle');
+    function updateDiaryHiddenToggle() {
+      diaryHiddenToggle.classList.toggle('active', getDiaryHidden());
+    }
+    diaryHiddenToggle.addEventListener('click', function () {
+      localStorage.setItem('pt:diaryHidden', getDiaryHidden() ? '0' : '1');
+      updateDiaryHiddenToggle();
+      renderPage(document.getElementById('currentPage'), currentView, true);
+      flashSaved();
+    });
+
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
       renderChips();
@@ -3131,6 +3129,7 @@
       renderFontChips();
       renderTimeStepChips();
       updateRokuyoToggle();
+      updateDiaryHiddenToggle();
       updateStatsToggle();
       updateGcalUI();
       modal.style.display = 'flex';
