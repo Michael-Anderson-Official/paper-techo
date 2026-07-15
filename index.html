@@ -889,7 +889,7 @@
     align-items: center;
     gap: 8px;
   }
-  .event-time-input {
+  .event-sel {
     flex: 1 1 auto;
     min-width: 0;
     font-family: inherit;
@@ -898,9 +898,10 @@
     background: rgba(255, 255, 255, 0.6);
     border: 1px solid rgba(120, 100, 60, 0.3);
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: 8px 6px;
   }
-  .event-tilde { color: #6b6046; }
+  .event-colon { color: #6b6046; }
+  .event-tilde { color: #6b6046; margin: 0 2px; }
   .event-title-input {
     width: 100%;
     font-family: inherit;
@@ -1189,9 +1190,13 @@
     <h2 id="eventModalTitle">よていを書く</h2>
     <p class="settings-label">時間</p>
     <div class="event-times">
-      <input id="evStart" type="time" class="event-time-input" aria-label="はじまりの時間">
+      <select id="evStartH" class="event-sel" aria-label="はじまり 時"></select>
+      <span class="event-colon">:</span>
+      <select id="evStartM" class="event-sel" aria-label="はじまり 分"></select>
       <span class="event-tilde">〜</span>
-      <input id="evEnd" type="time" class="event-time-input" aria-label="おわりの時間">
+      <select id="evEndH" class="event-sel" aria-label="おわり 時"></select>
+      <span class="event-colon">:</span>
+      <select id="evEndM" class="event-sel" aria-label="おわり 分"></select>
     </div>
     <p class="settings-note">時間はあけてもだいじょうぶ（終日あつかい）。</p>
     <p class="settings-label" style="margin-top:14px;">よてい</p>
@@ -2846,17 +2851,57 @@
   // ---- 予定エディタ（時間つきの予定を自分で書く）----
   var editState = { iso: null, idx: -1 };
 
+  function pad2n(n) { return (n < 10 ? '0' : '') + n; }
+
+  // セレクトに選択肢を入れる。opts=[[value,label],...]、curは現在値（無ければ追加して選べるように）
+  function fillSelect(sel, opts, cur) {
+    sel.innerHTML = '';
+    var has = false;
+    opts.forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o[0]; op.textContent = o[1];
+      if (o[0] === cur) has = true;
+      sel.appendChild(op);
+    });
+    // 既存データが刻みに合わない値（例: 5分刻みで:03）でも選択状態を保てるよう補う
+    if (cur && !has) {
+      var op2 = document.createElement('option');
+      op2.value = cur; op2.textContent = cur;
+      sel.appendChild(op2);
+    }
+    sel.value = cur || '';
+  }
+
+  // 時・分セレクトを設定の刻みで用意して、"HH:MM"（空=未設定）を反映する
+  function setTimeSelectors(hSel, mSel, hhmm, emptyLabel) {
+    var step = getTimeStep();
+    var hOpts = [['', emptyLabel]];
+    for (var h = 0; h < 24; h++) hOpts.push([pad2n(h), String(h)]);
+    var mOpts = [];
+    for (var m = 0; m < 60; m += step) mOpts.push([pad2n(m), pad2n(m)]);
+    var curH = '', curM = '00';
+    if (hhmm && /^\d{1,2}:\d{2}$/.test(hhmm)) {
+      var p = hhmm.split(':');
+      curH = pad2n(parseInt(p[0], 10));
+      curM = p[1];
+    }
+    fillSelect(hSel, hOpts, curH);
+    fillSelect(mSel, mOpts, curM);
+  }
+
+  // セレクトから "HH:MM" を作る（時が未設定なら空＝終日/なし）
+  function readTimeSelectors(hSel, mSel) {
+    if (!hSel.value) return '';
+    return hSel.value + ':' + (mSel.value || '00');
+  }
+
   function openEventEditor(iso, idx) {
     editState.iso = iso;
     editState.idx = idx;
     var mine = readMyEvents(iso);
     var ev = (idx >= 0 && mine[idx]) ? mine[idx] : { s: '', e: '', t: '' };
-    // 時間入力の刻み（1分=60秒 / 5分=300秒）を設定に合わせる
-    var stepSec = String(getTimeStep() * 60);
-    document.getElementById('evStart').step = stepSec;
-    document.getElementById('evEnd').step = stepSec;
-    document.getElementById('evStart').value = ev.s || '';
-    document.getElementById('evEnd').value = ev.e || '';
+    setTimeSelectors(document.getElementById('evStartH'), document.getElementById('evStartM'), ev.s || '', '終日');
+    setTimeSelectors(document.getElementById('evEndH'), document.getElementById('evEndM'), ev.e || '', 'なし');
     document.getElementById('evTitle').value = ev.t || '';
     document.getElementById('eventModalTitle').textContent = idx >= 0 ? 'よていをなおす' : 'よていを書く';
     document.getElementById('evDelete').style.display = idx >= 0 ? '' : 'none';
@@ -2882,8 +2927,8 @@
   function saveEventFromEditor() {
     var iso = editState.iso;
     if (!iso) return closeEventEditor();
-    var s = document.getElementById('evStart').value || '';
-    var e = document.getElementById('evEnd').value || '';
+    var s = readTimeSelectors(document.getElementById('evStartH'), document.getElementById('evStartM'));
+    var e = readTimeSelectors(document.getElementById('evEndH'), document.getElementById('evEndM'));
     var t = (document.getElementById('evTitle').value || '').trim();
     if (!t) { closeEventEditor(); return; } // タイトルが空なら何もしない
     var mine = readMyEvents(iso);
