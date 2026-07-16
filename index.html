@@ -955,6 +955,23 @@
     color: #8a8d99;
     margin-top: 10px;
   }
+  /* 計画表と連携（コード） */
+  .link-code-row { display: flex; align-items: center; gap: 8px; }
+  .link-code {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 18px; letter-spacing: 2px;
+    color: var(--ink-strong);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(120, 100, 60, 0.3);
+    border-radius: 8px; padding: 8px 10px; text-align: center; user-select: all;
+  }
+  .link-enter-row { display: flex; gap: 8px; align-items: center; }
+  .link-enter-row .write-input { flex: 1; }
+  .link-join {
+    font-family: inherit; font-size: 14px; padding: 9px 14px;
+    border-radius: 8px; border: 1px solid #4d6b4d; background: #5a7d5a; color: #fff; cursor: pointer;
+  }
   /* 連携などのやり方（開閉できる説明） */
   .howto { margin-top: 8px; }
   .howto > summary {
@@ -1284,6 +1301,19 @@
     <p class="settings-label" style="margin-top:16px;">日記の書き出し</p>
     <p id="diaryExportStatus" class="settings-note" style="margin-top:0;">書いた日記だけをまとめて、読みやすいテキストファイルにできます。</p>
     <button id="diaryExportBtn" type="button" class="settings-close" style="margin-top:0;">テキストで書き出す</button>
+    <p class="settings-label" style="margin-top:16px;">手ざわり計画表と連携</p>
+    <p id="linkNote" class="settings-note" style="margin-top:0;"></p>
+    <div id="linkOn" style="display:none;">
+      <div class="link-code-row"><span id="linkCodeShow" class="link-code"></span><button id="linkCopyBtn" type="button" class="settings-close" style="margin-top:0; width:auto; padding:8px 12px;">コピー</button></div>
+      <button id="linkStopBtn" type="button" class="settings-close" style="margin-top:8px; color:#c4645c;">連携をやめる</button>
+    </div>
+    <div id="linkOff">
+      <div class="link-enter-row">
+        <input id="linkCodeInput" type="text" class="write-input" placeholder="計画表のコードを入れる" autocapitalize="characters" autocorrect="off" spellcheck="false">
+        <button id="linkJoinBtn" type="button" class="link-join">つなぐ</button>
+      </div>
+      <button id="linkStartBtn" type="button" class="settings-close" style="margin-top:8px;">コードを作る（手帳から始める）</button>
+    </div>
     <p class="settings-label" style="margin-top:16px;">データのひかえ</p>
     <p id="backupStatus" class="settings-note" style="margin-top:0;">手帳の中身をファイルに保存できます。機種変や、ホーム画面のアイコンを消す前のお守りに。</p>
     <div style="display:flex; gap:8px;">
@@ -1601,6 +1631,42 @@
     f.items.forEach(function (it) { if (it.id === id) it.done = !!done; });
     f.updated = new Date().toISOString();
     localStorage.setItem(keyStudyFeed(iso), JSON.stringify(f));
+    syncPushStudy(iso);   // 別アプリのときは中継サーバー経由で計画表へ○を反映
+  }
+
+  // ---- 計画表との連携（中継サーバー経由の同期） ----
+  // 別々のiOSアプリはlocalStorageを共有できないため、共有コードで繋ぐ。
+  function linkBase() { return window.__linkBase || 'https://keikakuchou-notify.keikakuchou-app.workers.dev'; }
+  function studyLinkCode() { return localStorage.getItem('pt:linkCode') || ''; }
+  // 手帳は○だけ更新できる。計画表側が持ち主の本文はサーバーが保持する
+  function syncPushStudy(iso) {
+    var code = studyLinkCode();
+    if (!code) return;
+    var feed = readStudyFeed(iso) || { v: 1, items: [] };
+    fetch(linkBase() + '/link/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code, date: iso, role: 'techo', feed: feed })
+    }).catch(function () {});
+  }
+  // サーバーから計画表のフィードを取り込み、勉強欄を最新にする（本文の持ち主は計画表なのでサーバーを正とする）
+  function syncPullStudy(rootEl, iso) {
+    var code = studyLinkCode();
+    if (!code) return;
+    fetch(linkBase() + '/link/pull?code=' + encodeURIComponent(code) + '&date=' + iso)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var server = data.feed;
+        var localStr = localStorage.getItem(keyStudyFeed(iso));
+        var serverStr = (server && server.items && server.items.length) ? JSON.stringify(server) : null;
+        if (serverStr === (localStr || null)) return;   // 変化なし
+        if (serverStr) localStorage.setItem(keyStudyFeed(iso), serverStr);
+        else localStorage.removeItem(keyStudyFeed(iso));
+        var el = rootEl || document.getElementById('currentPage');
+        var area = el && el.querySelector('.study-area');
+        var divider = el && el.querySelector('.study-divider');
+        if (area && divider) buildStudy(area, divider, iso, true);
+      }).catch(function () {});
   }
 
   // 時刻文字列の先頭HH:MMを分に。無ければ-1（終日＝先頭に並ぶ）
@@ -2945,6 +3011,7 @@
     var area = rootEl.querySelector('.study-area');
     var divider = rootEl.querySelector('.study-divider');
     if (area && divider) buildStudy(area, divider, iso, true);
+    syncPullStudy(rootEl, iso);   // 別アプリ連携時はサーバーからも取り込む
   }
 
   // やること（ToDo）欄を組み立てる。各行=チェック＋テキスト。空きの追加行が末尾に1つ。
@@ -3558,7 +3625,53 @@
       updateDiaryHiddenToggle();
       updateStatsToggle();
       updateGcalUI();
+      renderLinkSection();
       modal.style.display = 'flex';
+    });
+
+    // ---- 計画表と連携（ペアリング） ----
+    function makeStudyLinkCode() {
+      var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      var arr = new Uint8Array(12), s = '';
+      if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(arr);
+      else for (var j = 0; j < 12; j++) arr[j] = Math.floor(Math.random() * 256);
+      for (var i = 0; i < 12; i++) s += chars[arr[i] % chars.length];
+      return s;
+    }
+    function renderLinkSection() {
+      var code = studyLinkCode();
+      document.getElementById('linkOn').style.display = code ? '' : 'none';
+      document.getElementById('linkOff').style.display = code ? 'none' : '';
+      document.getElementById('linkCodeShow').textContent = code;
+      document.getElementById('linkNote').textContent = code
+        ? 'このコードを手ざわり計画表の設定にも入れると、計画表で書いた勉強が今日のページの「勉強」に出ます。○は両方から付け外しできます。'
+        : '別々のアプリとして使うときは、この連携コードで手ざわり計画表とつなぎます。計画表で「連携をはじめる」を押して出たコードを、ここに入れて「つなぐ」を押してください。';
+    }
+    document.getElementById('linkJoinBtn').addEventListener('click', function () {
+      var v = (document.getElementById('linkCodeInput').value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+      if (v.length < 8 || v.length > 40) { alert('コードは8〜40文字の英数字で入れてください。'); return; }
+      localStorage.setItem('pt:linkCode', v);
+      document.getElementById('linkCodeInput').value = '';
+      renderLinkSection();
+      var vp = viewParts(currentView);
+      if (vp.type === 'day') syncPullStudy(document.getElementById('currentPage'), vp.iso);
+      flashSaved();
+    });
+    document.getElementById('linkStartBtn').addEventListener('click', function () {
+      localStorage.setItem('pt:linkCode', makeStudyLinkCode());
+      renderLinkSection();
+      flashSaved();
+    });
+    document.getElementById('linkStopBtn').addEventListener('click', function () {
+      if (!confirm('連携をやめますか？（計画表との同期が止まります。手帳の中身は消えません）')) return;
+      localStorage.removeItem('pt:linkCode');
+      renderLinkSection();
+      flashSaved();
+    });
+    document.getElementById('linkCopyBtn').addEventListener('click', function () {
+      var code = studyLinkCode();
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).catch(function () {});
+      flashSaved();
     });
     document.getElementById('menuPrivacy').addEventListener('click', function () {
       menuPanel.style.display = 'none';
