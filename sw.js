@@ -4,7 +4,7 @@
 //   （更新がすぐ届き、オフラインでも開ける）
 // - 手書きフォント（Google Fonts）はキャッシュ優先の使い回し。一度表示した字の
 //   サブセットから順にオフラインで使えるようになる
-var CACHE = 'tezawari-v13';
+var CACHE = 'tezawari-v14';
 var SHELL = [
   './',
   './manifest.webmanifest',
@@ -42,9 +42,10 @@ self.addEventListener('fetch', function (ev) {
   var url = new URL(req.url);
 
   // ページ本体: ネット優先（更新を届ける）→ オフラインならキャッシュ
+  // cache:'reload' でブラウザのHTTPキャッシュ(GitHub Pagesのmax-age)も飛ばし、常に最新HTMLを取る
   if (req.mode === 'navigate') {
     ev.respondWith(
-      fetch(req).then(function (res) {
+      fetch(req, { cache: 'reload' }).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE).then(function (cache) { cache.put('./', copy); });
         return res;
