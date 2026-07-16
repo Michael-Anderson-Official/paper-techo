@@ -321,8 +321,9 @@
   /* 勉強欄: 手ざわり計画表から「印刷」される勉強計画。
      予定と同じく“印刷されたもの”＝本文は編集不可。ただし○（できた）のしるしだけは
      自分のものなので、しるしをタップして付け外しできる（doneはpk:feed:へ書き戻す） */
-  .study-area { flex: none; max-height: 116px; overflow-y: auto; touch-action: pan-y; }
-  .study-area.is-empty { display: none; }
+  /* 勉強欄は予定・タスクと同じく“いつも同じ高さ”で確保する（3行=84px、28pxの罫線に揃う）。
+     日によって出たり消えたりすると、下のタスク・日記の罫線位置がズレるため常に同じ場所に置く */
+  .study-area { flex: none; height: 84px; overflow-y: auto; touch-action: pan-y; }
   .study-row {
     position: relative;
     display: flex;
@@ -1833,7 +1834,7 @@
       body.appendChild(planArea);
 
       // 勉強欄: 手ざわり計画表から「印刷」される。中身はbuildStudyが入れる。
-      // 計画がない日は丸ごと隠れる（is-empty）ので、予定→タスクの並びを邪魔しない
+      // 予定・タスクと同じく“常に同じ高さ”で確保する（空の日も）＝下のタスク・日記の罫線位置が日替わりでズレない
       var studyDivider = document.createElement('div');
       studyDivider.className = 'page-divider study-divider';
       var studyLabel = document.createElement('span');
@@ -3063,13 +3064,11 @@
 
   // 勉強欄を組み立てる。手ざわり計画表のフィード（pk:feed:ISO）を「印刷」する。
   // 本文は編集不可（計画表が持ち主）。○のしるしだけタップで付け外しできる。
-  // 計画がない日は divider ごと隠す（is-empty）
+  // 勉強欄は予定・タスクと同じく常設（空の日も高さを確保）＝下のタスク・日記の位置が日替わりでズレない
   function buildStudy(container, divider, iso, interactive) {
     container.innerHTML = '';
     var feed = readStudyFeed(iso);
     var items = (feed && feed.items) || [];
-    container.classList.toggle('is-empty', items.length === 0);
-    divider.style.display = items.length ? '' : 'none';
     items.forEach(function (it) {
       var row = document.createElement('div');
       row.className = 'study-row' + (it.done ? ' done' : '');
