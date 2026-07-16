@@ -358,6 +358,8 @@
   .study-text {
     flex: 1 1 auto;
     min-width: 0;
+    display: flex;
+    align-items: baseline;
     font-family: var(--write-font, 'Shippori Mincho'), 'Klee One', serif;
     font-size: 16px;
     line-height: 22px;
@@ -368,8 +370,24 @@
     color: var(--print-soft);
     margin-right: 5px;
     white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  /* やること（本文）は手帳からも編集できる入力欄。見た目は文字のまま */
+  .study-edit {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 22px;
+    color: inherit;
+    caret-color: var(--ink-text);
   }
   .study-row.done .study-text { color: var(--ink-soft); }
+  .study-row.done .study-edit { color: var(--ink-soft); text-decoration: line-through; }
   .plan-empty {
     height: 28px;
     line-height: 28px;
@@ -1628,46 +1646,76 @@
   function setStudyDone(iso, id, done) {
     var f = readStudyFeed(iso);
     if (!f) return;
-    f.items.forEach(function (it) { if (it.id === id) it.done = !!done; });
+    var now = Date.now();
+    f.items.forEach(function (it) { if (it.id === id) { it.done = !!done; it.u = now; } });
     f.updated = new Date().toISOString();
     localStorage.setItem(keyStudyFeed(iso), JSON.stringify(f));
-    syncPushStudy(iso);   // 別アプリのときは中継サーバー経由で計画表へ○を反映
+    syncPushStudy(iso);
+  }
+  // 手帳からやること（本文）も編集できる。変更はサーバー経由で計画表へ届く
+  function setStudyText(iso, id, text) {
+    var f = readStudyFeed(iso);
+    if (!f) return;
+    var now = Date.now();
+    f.items.forEach(function (it) { if (it.id === id) { it.text = text; it.u = now; } });
+    f.updated = new Date().toISOString();
+    localStorage.setItem(keyStudyFeed(iso), JSON.stringify(f));
+    syncPushStudy(iso);
   }
 
-  // ---- 計画表との連携（中継サーバー経由の同期） ----
-  // 別々のiOSアプリはlocalStorageを共有できないため、共有コードで繋ぐ。
+  // ---- 計画表との連携（即時同期。HTTPでpush・WebSocketで受信） ----
   function linkBase() { return window.__linkBase || 'https://keikakuchou-notify.keikakuchou-app.workers.dev'; }
+  function linkWsBase() { return linkBase().replace(/^http/, 'ws'); }
   function studyLinkCode() { return localStorage.getItem('pt:linkCode') || ''; }
-  // 手帳は○だけ更新できる。計画表側が持ち主の本文はサーバーが保持する
+  var studyApplyingRemote = false, studyPushTimers = {};
   function syncPushStudy(iso) {
+    if (studyApplyingRemote) return;
     var code = studyLinkCode();
     if (!code) return;
-    var feed = readStudyFeed(iso) || { v: 1, items: [] };
-    fetch(linkBase() + '/link/push', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code, date: iso, role: 'techo', feed: feed })
-    }).catch(function () {});
-  }
-  // サーバーから計画表のフィードを取り込み、勉強欄を最新にする（本文の持ち主は計画表なのでサーバーを正とする）
-  function syncPullStudy(rootEl, iso) {
-    var code = studyLinkCode();
-    if (!code) return;
-    fetch(linkBase() + '/link/pull?code=' + encodeURIComponent(code) + '&date=' + iso)
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (data) {
-        if (!data) return;
-        var server = data.feed;
-        var localStr = localStorage.getItem(keyStudyFeed(iso));
-        var serverStr = (server && server.items && server.items.length) ? JSON.stringify(server) : null;
-        if (serverStr === (localStr || null)) return;   // 変化なし
-        if (serverStr) localStorage.setItem(keyStudyFeed(iso), serverStr);
-        else localStorage.removeItem(keyStudyFeed(iso));
-        var el = rootEl || document.getElementById('currentPage');
-        var area = el && el.querySelector('.study-area');
-        var divider = el && el.querySelector('.study-divider');
-        if (area && divider) buildStudy(area, divider, iso, true);
+    clearTimeout(studyPushTimers[iso]);
+    studyPushTimers[iso] = setTimeout(function () {
+      var feed = readStudyFeed(iso) || { v: 1, items: [] };
+      fetch(linkBase() + '/link/push?code=' + encodeURIComponent(code), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: iso, role: 'techo', feed: feed })
       }).catch(function () {});
+    }, 250);
   }
+  function applyRemoteStudy(iso, feed) {
+    studyApplyingRemote = true;
+    try {
+      if (feed && feed.items && feed.items.length) localStorage.setItem(keyStudyFeed(iso), JSON.stringify(feed));
+      else localStorage.removeItem(keyStudyFeed(iso));
+    } finally { studyApplyingRemote = false; }
+    var vp = viewParts(currentView);
+    if (vp.type === 'day' && vp.iso === iso) {
+      var el = document.getElementById('currentPage');
+      var area = el && el.querySelector('.study-area');
+      var divider = el && el.querySelector('.study-divider');
+      // 入力中はその欄を潰さない（次の変更/復帰で同期される）
+      var ae = document.activeElement;
+      if (area && ae && ae.classList && ae.classList.contains('study-edit') && area.contains(ae)) return;
+      if (area && divider) buildStudy(area, divider, iso, true);
+    }
+  }
+  var studyWs = null, studyWsRetry = 0, studyWsWant = false;
+  function studyWsConnect() {
+    var code = studyLinkCode();
+    if (!code) { studyWsDisconnect(); return; }
+    studyWsWant = true;
+    if (studyWs && (studyWs.readyState === 0 || studyWs.readyState === 1)) return;
+    try { studyWs = new WebSocket(linkWsBase() + '/link/ws?code=' + encodeURIComponent(code)); }
+    catch (e) { studyWsSchedule(); return; }
+    studyWs.onmessage = function (ev) {
+      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.type === 'snapshot') { Object.keys(msg.feeds).forEach(function (d) { applyRemoteStudy(d, msg.feeds[d]); }); }
+      else if (msg.type === 'update') { applyRemoteStudy(msg.date, msg.feed); }
+    };
+    studyWs.onclose = function () { studyWs = null; if (studyWsWant) studyWsSchedule(); };
+    studyWs.onerror = function () { try { studyWs.close(); } catch (e) {} };
+  }
+  function studyWsSchedule() { clearTimeout(studyWsRetry); studyWsRetry = setTimeout(studyWsConnect, 3000); }
+  function studyWsDisconnect() { studyWsWant = false; clearTimeout(studyWsRetry); if (studyWs) { try { studyWs.close(); } catch (e) {} studyWs = null; } }
 
   // 時刻文字列の先頭HH:MMを分に。無ければ-1（終日＝先頭に並ぶ）
   function timeSortKey(timeStr) {
@@ -2635,6 +2683,19 @@
   statBump('open');
   statsFlush();
 
+  // 計画表との即時同期（連携中なら接続。背面では切り、復帰でつなぎ直す）
+  studyWsConnect();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      studyWsConnect();
+      var vp = viewParts(currentView);
+      if (vp.type === 'day') refreshStudyOnPage(document.getElementById('currentPage'), vp.iso);
+    } else {
+      studyWsDisconnect();
+    }
+  });
+  window.addEventListener('pageshow', studyWsConnect);
+
   // ---- つかいかたの統計（匿名・数だけ） ----
   // 送るのは回数と、選択中の紙/字のID、連携の有無だけ。書いた内容は一切送らない。
   // 匿名ID（ランダム）で1日1回まとめて送信。設定でオフにできる（pt:stats=0）
@@ -2989,7 +3050,6 @@
         subj.textContent = it.subject;
         text.appendChild(subj);
       }
-      text.appendChild(document.createTextNode(it.text || ''));
       row.appendChild(mark);
       row.appendChild(text);
       if (interactive) {
@@ -3000,6 +3060,21 @@
           setStudyDone(iso, it.id, now);
           flashSaved();
         });
+        // やること（本文）は手帳からも編集できる。変更は計画表へ届く
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'study-edit';
+        input.value = it.text || '';
+        input.maxLength = 200;
+        var commit = function () {
+          var v = input.value.trim();
+          if (v !== (it.text || '')) { it.text = v; setStudyText(iso, it.id, v); flashSaved(); }
+        };
+        input.addEventListener('change', commit);
+        input.addEventListener('blur', commit);
+        text.appendChild(input);
+      } else {
+        text.appendChild(document.createTextNode(it.text || ''));
       }
       container.appendChild(row);
     });
@@ -3011,7 +3086,7 @@
     var area = rootEl.querySelector('.study-area');
     var divider = rootEl.querySelector('.study-divider');
     if (area && divider) buildStudy(area, divider, iso, true);
-    syncPullStudy(rootEl, iso);   // 別アプリ連携時はサーバーからも取り込む
+    studyWsConnect();   // 連携中なら即時同期をつなぐ（変更はWSで届く）
   }
 
   // やること（ToDo）欄を組み立てる。各行=チェック＋テキスト。空きの追加行が末尾に1つ。
@@ -3653,18 +3728,19 @@
       localStorage.setItem('pt:linkCode', v);
       document.getElementById('linkCodeInput').value = '';
       renderLinkSection();
-      var vp = viewParts(currentView);
-      if (vp.type === 'day') syncPullStudy(document.getElementById('currentPage'), vp.iso);
+      studyWsConnect();     // つないだら即時同期を開始（接続時に最新を受信）
       flashSaved();
     });
     document.getElementById('linkStartBtn').addEventListener('click', function () {
       localStorage.setItem('pt:linkCode', makeStudyLinkCode());
       renderLinkSection();
+      studyWsConnect();
       flashSaved();
     });
     document.getElementById('linkStopBtn').addEventListener('click', function () {
       if (!confirm('連携をやめますか？（計画表との同期が止まります。手帳の中身は消えません）')) return;
       localStorage.removeItem('pt:linkCode');
+      studyWsDisconnect();
       renderLinkSection();
       flashSaved();
     });
