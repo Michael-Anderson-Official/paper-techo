@@ -263,19 +263,19 @@
   }
   .page-text::placeholder { color: var(--placeholder); }
   .page-text.diary { flex: 1 1 auto; min-height: 0; }
-  /* 計画欄は「時間つき予定」を書く場所（タップでエディタ）。予定・タスク・日記の3段構成に合わせた高さ */
+  /* 計画欄は「時間つき予定」を書く場所（タップでエディタ）。高さ112px=4行（28px罫線に整合） */
   .plan-area {
     flex: none;
-    height: 140px;
+    height: 112px;
     overflow-y: auto;
     padding: 0 16px 0 0;
     touch-action: pan-y;
     cursor: pointer;
   }
-  /* やること（ToDo）: チェックボックス付きの行 */
+  /* やること（ToDo）: チェックボックス付きの行。高さ112px=4行 */
   .todo-area {
     flex: none;
-    height: 140px;
+    height: 112px;
     overflow-y: auto;
     padding: 0 16px 0 0;
     touch-action: pan-y;
