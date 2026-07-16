@@ -1092,9 +1092,14 @@
   }
   .del-row.readonly .del-title { color: #8a8d99; }
 
-  /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い） */
+  /* 黒板は印刷も含めて全部チョークの手書き（黒板に活字は無い）。書く欄・タスク・勉強も揃える */
   body[data-paper="board"] .book,
-  body[data-paper="board"] .toolbar {
+  body[data-paper="board"] .toolbar,
+  body[data-paper="board"] .page-text,
+  body[data-paper="board"] .page-event,
+  body[data-paper="board"] .todo-text,
+  body[data-paper="board"] .study-text,
+  body[data-paper="board"] .study-edit {
     font-family: 'Yomogi', 'Klee One', cursive;
   }
   /* チョークのかすれ（打ち込み文字にも効く）:
@@ -1134,12 +1139,38 @@
   body[data-paper="led"] .book,
   body[data-paper="led"] .toolbar,
   body[data-paper="led"] .page-text,
-  body[data-paper="led"] .page-event {
+  body[data-paper="led"] .page-event,
+  body[data-paper="led"] .todo-text,
+  body[data-paper="led"] .study-text,
+  body[data-paper="led"] .study-edit {
     font-family: 'DotGothic16', monospace;
   }
   body[data-paper="led"] .book {
     text-shadow: 0 0 6px; /* 色指定なし=文字色で光る（LEDのにじみ） */
   }
+
+  /* 黒・黒板・電光掲示板では、インデックスタブと下の道具ボタンも盤面に溶け込ませる（テーマに合わせる） */
+  body[data-paper="black"] .book-tab,
+  body[data-paper="board"] .book-tab,
+  body[data-paper="led"] .book-tab,
+  body[data-paper="black"] .toolbar button,
+  body[data-paper="board"] .toolbar button,
+  body[data-paper="led"] .toolbar button {
+    background: var(--paper-back-2);
+    border-color: var(--rule-strong);
+    color: var(--ink-text);
+    box-shadow: none;
+  }
+  body[data-paper="black"] .book-tab.active,
+  body[data-paper="board"] .book-tab.active,
+  body[data-paper="led"] .book-tab.active {
+    background: var(--paper-back-1);
+    color: var(--ink-strong);
+    border-color: var(--rule-strong);
+  }
+  /* 電光掲示板はボタン文字もほのかに発光させて盤面と一体に */
+  body[data-paper="led"] .book-tab,
+  body[data-paper="led"] .toolbar button { text-shadow: 0 0 5px; }
 
   /* 引き違いスライド中の板（黒板・電光掲示板） */
   .board-sliding {
