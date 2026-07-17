@@ -1150,13 +1150,19 @@
     text-shadow: 0 0 6px; /* 色指定なし=文字色で光る（LEDのにじみ） */
   }
 
-  /* 黒・黒板・電光掲示板では、☰メニュー・インデックスタブ・下の道具ボタンも盤面に溶け込ませる */
+  /* すべての紙色で、☰メニュー・インデックスタブ・下の道具ボタンをその紙の盤面に溶け込ませる */
+  body[data-paper="ivory"] .menu-btn,
+  body[data-paper="white"] .menu-btn,
   body[data-paper="black"] .menu-btn,
   body[data-paper="board"] .menu-btn,
   body[data-paper="led"] .menu-btn,
+  body[data-paper="ivory"] .book-tab,
+  body[data-paper="white"] .book-tab,
   body[data-paper="black"] .book-tab,
   body[data-paper="board"] .book-tab,
   body[data-paper="led"] .book-tab,
+  body[data-paper="ivory"] .toolbar button,
+  body[data-paper="white"] .toolbar button,
   body[data-paper="black"] .toolbar button,
   body[data-paper="board"] .toolbar button,
   body[data-paper="led"] .toolbar button {
@@ -1165,6 +1171,8 @@
     color: var(--ink-text);
     box-shadow: none;
   }
+  body[data-paper="ivory"] .book-tab.active,
+  body[data-paper="white"] .book-tab.active,
   body[data-paper="black"] .book-tab.active,
   body[data-paper="board"] .book-tab.active,
   body[data-paper="led"] .book-tab.active {
