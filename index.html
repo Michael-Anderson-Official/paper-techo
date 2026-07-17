@@ -1317,10 +1317,7 @@
 <div id="settingsModal" class="settings-modal" style="display:none;">
   <div class="settings-card">
     <h2>設定</h2>
-    <p class="settings-label">ことばづかい</p>
-    <div id="wordingChips" class="week-chips"></div>
-    <p class="settings-note">画面の文言を「大人向け（漢字）」か「やさしい（ひらがな多め）」に切り替えます。</p>
-    <p class="settings-label" style="margin-top:16px;">週の始まり</p>
+    <p class="settings-label">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
     <p class="settings-label" style="margin-top:16px;">紙の色</p>
@@ -1554,32 +1551,27 @@
     return localStorage.getItem('pt:diaryHidden') === '1';
   }
 
-  // ことばづかい: 'adult'（大人向け・漢字）/ 'kid'（やさしい・ひらがな）。既定は大人向け
-  function getWordMode() {
-    return localStorage.getItem('pt:wording') === 'kid' ? 'kid' : 'adult';
-  }
   var WORDS = {
-    planPlaceholder:   { adult: '今日の予定を入力…',            kid: 'きょうの計画を書く…' },
-    diaryPlaceholder:  { adult: '今日の日記…',                  kid: 'きょうの日記…' },
-    evTitlePlaceholder:{ adult: '内容を入力',                   kid: 'なにをする？' },
-    evTimeNote:        { adult: '時間は空欄でも構いません（終日扱い）。', kid: '時間はあけてもだいじょうぶ（終日あつかい）。' },
-    evLabelTitle:      { adult: '内容',                         kid: 'よてい' },
-    evAddTitle:        { adult: '予定を追加',                   kid: 'よていを書く' },
-    evEditTitle:       { adult: '予定を編集',                   kid: 'よていをなおす' },
-    dayEventsAdd:      { adult: '＋予定を追加',                 kid: '＋よていを書く' },
-    editMark:          { adult: '✎ 編集',                      kid: '✎ なおす' },
-    moreN:             { adult: 'ほか {n} 件（すべて表示）',    kid: 'ほか {n} 件（すべて見る）' },
-    close:             { adult: '閉じる',                       kid: 'とじる' },
-    settingsStat:      { adult: '利用状況の統計',               kid: 'つかいかたの統計' },
-    settingsStep:      { adult: '時間の刻み',                   kid: '時間のきざみ' },
-    todoLabel:         { adult: 'タスク',                       kid: 'やること' },
-    todoAdd:           { adult: '＋ タスクを追加',              kid: '＋ やることを書く' },
-    planLabel:         { adult: '予定',                         kid: 'よてい' },
-    studyLabel:        { adult: '勉強',                         kid: 'べんきょう' }
+    planPlaceholder:   '今日の予定を入力…',
+    diaryPlaceholder:  '今日の日記…',
+    evTitlePlaceholder:'内容を入力',
+    evTimeNote:        '時間は空欄でも構いません（終日扱い）。',
+    evLabelTitle:      '内容',
+    evAddTitle:        '予定を追加',
+    evEditTitle:       '予定を編集',
+    dayEventsAdd:      '＋予定を追加',
+    editMark:          '✎ 編集',
+    moreN:             'ほか {n} 件（すべて表示）',
+    close:             '閉じる',
+    settingsStat:      '利用状況の統計',
+    settingsStep:      '時間の刻み',
+    todoLabel:         'タスク',
+    todoAdd:           '＋ タスクを追加',
+    planLabel:         '予定',
+    studyLabel:        '勉強'
   };
   function tx(key, vars) {
-    var w = WORDS[key];
-    var s = w ? w[getWordMode()] : '';
+    var s = WORDS[key] || '';
     if (vars) { for (var k in vars) s = s.replace('{' + k + '}', vars[k]); }
     return s;
   }
@@ -3665,28 +3657,6 @@
       flashSaved();
     });
 
-    // ことばづかい（大人向け / やさしい）
-    var wordingChips = document.getElementById('wordingChips');
-    function renderWordingChips() {
-      wordingChips.innerHTML = '';
-      var cur = getWordMode();
-      [['adult', '大人向け'], ['kid', 'やさしい']].forEach(function (opt) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = opt[1];
-        b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
-        b.className = cur === opt[0] ? 'active' : '';
-        b.addEventListener('click', function () {
-          localStorage.setItem('pt:wording', opt[0]);
-          applyWording();
-          renderWordingChips();
-          renderPage(document.getElementById('currentPage'), currentView, true);
-          flashSaved();
-        });
-        wordingChips.appendChild(b);
-      });
-    }
-
     // 時間のきざみ（1分 / 5分）
     var timeStepChips = document.getElementById('timeStepChips');
     function renderTimeStepChips() {
@@ -3733,7 +3703,6 @@
 
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
-      renderWordingChips();
       renderChips();
       renderPaperChips();
       renderFontChips();
