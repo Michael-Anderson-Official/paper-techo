@@ -2021,7 +2021,7 @@
         if (mCellEv.length) {
           var evs = document.createElement('div');
           evs.className = 'mg-evs' + (holiday ? ' below-holiday' : '');
-          evs._titles = mCellEv.map(function (ev) { return ev.title; });
+          evs._events = mCellEv.map(function (ev) { return { title: ev.title, color: ev.color }; });
           cell.appendChild(evs);
         }
         if (monthSel === iso) cell.classList.add('selected');
@@ -2054,11 +2054,11 @@
     var evsList = root.querySelectorAll('.mg-evs');
     for (var e = 0; e < evsList.length; e++) {
       var evs = evsList[e];
-      var titles = evs._titles || [];
-      if (!titles.length) continue;
+      var events = evs._events || [];
+      if (!events.length) continue;
       var avail = evs.clientHeight; // top/bottomで決まる実際の高さ
       var maxLines = Math.max(1, Math.floor(avail / MG_LINE_H));
-      var n = titles.length;
+      var n = events.length;
       var showEvents, more;
       if (n <= maxLines && n <= 4) {
         showEvents = n; more = 0;                 // 4件以下で全部収まる
@@ -2070,7 +2070,8 @@
       for (var i = 0; i < showEvents; i++) {
         var line = document.createElement('div');
         line.className = 'mg-ev';
-        line.textContent = titles[i];
+        line.textContent = events[i].title;
+        if (events[i].color) line.style.color = events[i].color;
         evs.appendChild(line);
       }
       if (more > 0) {
