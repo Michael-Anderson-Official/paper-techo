@@ -275,6 +275,17 @@
   }
   .page-text::placeholder { color: var(--placeholder); }
   .page-text.diary, .page-text.memo { flex: 1 1 auto; min-height: 0; }
+  .page-text.memo { white-space: pre-wrap; word-break: break-word; }
+  .page-text.memo:empty::before { content: attr(data-placeholder); color: var(--placeholder); pointer-events: none; }
+  /* 選んだ文字を〇や□で囲む（手書きで丸をつける感覚） */
+  .mark-circle, .mark-box {
+    display: inline-block;
+    border-color: var(--ink-text);
+    border-style: solid;
+    border-width: 1.6px;
+  }
+  .mark-box { padding: 1px 5px; margin: 0 1px; border-radius: 4px; }
+  .mark-circle { padding: 2px 10px; margin: 0 2px; border-radius: 50% / 65%; }
   /* 計画欄は「時間つき予定」を書く場所（タップでエディタ）。高さ112px=4行（28px罫線に整合） */
   .plan-area {
     flex: none;
@@ -1310,6 +1321,8 @@
   <button id="prevBtn" type="button" aria-label="前へ">◀ 前へ</button>
   <button id="todayBtn" type="button">今日</button>
   <button id="nextBtn" type="button" aria-label="次へ">次へ ▶</button>
+  <button id="markCircleBtn" type="button" style="display:none;" aria-label="選んだ文字を〇で囲む">〇で囲む</button>
+  <button id="markBoxBtn" type="button" style="display:none;" aria-label="選んだ文字を□で囲む">□で囲む</button>
 </div>
 <!-- 月ビューで日をタップしたときの、その日のプレビュー（ミニカル方式） -->
 <div id="monthDayPanel" class="month-day-panel" style="display:none;">
@@ -1717,6 +1730,87 @@
   function keyDiary(iso) { return 'pt:' + iso + ':diary'; }
   function keyMyEvents(iso) { return 'pt:' + iso + ':myevents'; } // 自分で書いた予定 [{s,e,t}]
 
+  // ---- メモ（日付に属さない自由記入。文字を〇/□で囲める） ----
+  // 保存形式はテキストノード＋<br>＋<span class="mark-circle|mark-box">のみに限定したHTML（pt:memo）。
+  // 貼り付け経由の余計なタグ・属性が混ざっても、保存直前とロード直後の両方でこの許可リストにかけて無害化する。
+  function sanitizeMemoHtml(html) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    (function walk(node) {
+      var child = node.firstChild;
+      while (child) {
+        var next = child.nextSibling;
+        if (child.nodeType === 1) {
+          var tag = child.tagName.toLowerCase();
+          if (tag === 'br') {
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          } else if (tag === 'span' && (child.classList.contains('mark-circle') || child.classList.contains('mark-box'))) {
+            var cls = child.classList.contains('mark-circle') ? 'mark-circle' : 'mark-box';
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            child.className = cls;
+            walk(child);
+          } else {
+            // 許可されていないタグは中身だけ展開して残す（文字は失わない）
+            while (child.firstChild) node.insertBefore(child.firstChild, child);
+            node.removeChild(child);
+          }
+        } else if (child.nodeType !== 3) {
+          node.removeChild(child); // コメント等は除去
+        }
+        child = next;
+      }
+    })(tmp);
+    return tmp.innerHTML;
+  }
+
+  // 選択範囲の直近の囲み(span)を探す（無ければnull）
+  function closestMemoMark(node, root) {
+    while (node && node !== root) {
+      if (node.nodeType === 1 && (node.classList.contains('mark-circle') || node.classList.contains('mark-box'))) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+  function unwrapMemoMark(span) {
+    var parent = span.parentNode;
+    while (span.firstChild) parent.insertBefore(span.firstChild, span);
+    parent.removeChild(span);
+    parent.normalize();
+  }
+  // 選択中の文字を〇/□で囲む。既にちょうど1つの囲みを選び直していた場合はトグルで外す
+  function applyMemoMark(className) {
+    var root = document.querySelector('.page-text.memo');
+    if (!root || !root.isContentEditable) return;
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    var range = sel.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return;
+
+    var mark = closestMemoMark(range.startContainer, root);
+    if (mark && mark === closestMemoMark(range.endContainer, root) && mark.textContent === range.toString()) {
+      unwrapMemoMark(mark);
+      sel.removeAllRanges();
+      saveMemoNow(root);
+      return;
+    }
+
+    var span = document.createElement('span');
+    span.className = className;
+    try {
+      range.surroundContents(span);
+    } catch (e) {
+      var frag = range.extractContents();
+      span.appendChild(frag);
+      range.insertNode(span);
+    }
+    sel.removeAllRanges();
+    saveMemoNow(root);
+  }
+  function saveMemoNow(root) {
+    localStorage.setItem('pt:memo', sanitizeMemoHtml(root.innerHTML));
+    flashSaved();
+  }
+
   // 自分で書いた予定の読み書き。s/e="HH:MM"（空=終日）、t=タイトル
   function readMyEvents(iso) {
     try {
@@ -2008,22 +2102,66 @@
       var mBody = document.createElement('div');
       mBody.className = 'page-body';
 
-      var memoTa = document.createElement('textarea');
-      memoTa.className = 'page-text memo';
-      memoTa.placeholder = interactive ? tx('memoPlaceholder') : '';
-      memoTa.value = localStorage.getItem('pt:memo') || '';
-      memoTa.spellcheck = false;
+      var memoDiv = document.createElement('div');
+      memoDiv.className = 'page-text memo';
+      memoDiv.setAttribute('data-placeholder', tx('memoPlaceholder'));
+      memoDiv.innerHTML = sanitizeMemoHtml(localStorage.getItem('pt:memo') || '');
+      memoDiv.spellcheck = false;
       if (interactive) {
-        memoTa.addEventListener('input', function () {
-          localStorage.setItem('pt:memo', memoTa.value);
-          if (!memoTa._statCounted) { memoTa._statCounted = true; statBump('memo'); }
+        memoDiv.contentEditable = 'true';
+        memoDiv.addEventListener('input', function () {
+          // 全部消したときに<br>だけ残ってプレースホルダーが出ない状態になるのを防ぐ（\u200bは下のEnter処理が置くカーソルの目印）
+          if (!memoDiv.textContent.replace(/\u200b/g, '') && !memoDiv.querySelector('.mark-circle, .mark-box')) memoDiv.innerHTML = '';
+          localStorage.setItem('pt:memo', sanitizeMemoHtml(memoDiv.innerHTML));
+          if (!memoDiv._statCounted) { memoDiv._statCounted = true; statBump('memo'); }
           flashSaved();
         });
+        // Enterは改行だけ（見出し用の<div>ブロックを作られると囲み判定が崩れるため手動で<br>を入れる）。
+        // <br>の直後にカーソルを置いても、それが末尾のときブラウザは「brの手前」に丸め直してしまう
+        // （そのまま打つと直前の文字にくっつく）ので、目印になる幅ゼロの文字を1つ置いてそこにカーソルを刺す
+        memoDiv.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          var sel = window.getSelection();
+          if (!sel.rangeCount) return;
+          var range = sel.getRangeAt(0);
+          range.deleteContents();
+          var br = document.createElement('br');
+          range.insertNode(br);
+          var anchor = document.createTextNode('\u200b');
+          br.after(anchor);
+          var after = document.createRange();
+          after.setStart(anchor, 1);
+          after.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(after);
+          memoDiv.dispatchEvent(new Event('input'));
+        });
+        // 貼り付けは書式なしのテキストだけ受け付ける（外部からの余計なタグ・イベント属性を持ち込ませない）
+        memoDiv.addEventListener('paste', function (ev) {
+          ev.preventDefault();
+          var text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
+          var sel = window.getSelection();
+          if (!sel.rangeCount) return;
+          var range = sel.getRangeAt(0);
+          range.deleteContents();
+          var lines = text.split(/\r\n|\r|\n/);
+          var frag = document.createDocumentFragment();
+          var lastNode = null;
+          lines.forEach(function (line, i) {
+            if (i > 0) frag.appendChild(document.createElement('br'));
+            lastNode = document.createTextNode(line);
+            frag.appendChild(lastNode);
+          });
+          range.insertNode(frag);
+          if (lastNode) { range.setStartAfter(lastNode); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
+          memoDiv.dispatchEvent(new Event('input'));
+        });
       } else {
-        memoTa.readOnly = true;
-        memoTa.tabIndex = -1;
+        memoDiv.contentEditable = 'false';
+        memoDiv.tabIndex = -1;
       }
-      mBody.appendChild(memoTa);
+      mBody.appendChild(memoDiv);
       frag.appendChild(mBody);
     } else {
       var first = new Date(v.y, v.m - 1, 1);
@@ -2327,6 +2465,8 @@
     if (tdB) tdB.textContent = isDay ? '今日' : (type === 'week' ? '今週' : '今月');
     var pgNav = [document.getElementById('prevBtn'), document.getElementById('nextBtn'), document.getElementById('todayBtn')];
     pgNav.forEach(function (b) { if (b) b.style.display = isMemo ? 'none' : ''; });
+    var markBtns = [document.getElementById('markCircleBtn'), document.getElementById('markBoxBtn')];
+    markBtns.forEach(function (b) { if (b) b.style.display = isMemo ? '' : 'none'; });
     // 月ビューが現在ページになったら、マスの高さに合わせて予定件数を調整（レイアウト後にrAFで）
     if (type === 'month') requestAnimationFrame(function () { fitMonthCells(); });
   }
@@ -2766,6 +2906,12 @@
   document.getElementById('tabMemo').addEventListener('click', function () {
     statBump('memo');
     flipTo('memo', 1);
+  });
+  // 〇/□で囲むボタン: pointerdownでpreventDefaultし、タップしても選択範囲が消えないようにする
+  [['markCircleBtn', 'mark-circle'], ['markBoxBtn', 'mark-box']].forEach(function (pair) {
+    var btn = document.getElementById(pair[0]);
+    btn.addEventListener('pointerdown', function (ev) { ev.preventDefault(); });
+    btn.addEventListener('click', function () { applyMemoMark(pair[1]); });
   });
 
   // 指の動きに追従するめくり。
