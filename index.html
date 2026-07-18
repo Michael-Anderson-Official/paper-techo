@@ -808,6 +808,8 @@
     gap: 6px;
     margin-top: 14px;
     align-items: center;
+    /* キーボードが出たとき〇/□ボタンをその上へ持ち上げる動き（JSがtransformを当てる） */
+    transition: transform 0.15s ease-out;
   }
   .toolbar button {
     font-family: inherit;
@@ -2939,6 +2941,29 @@
     btn.addEventListener('pointerdown', function (ev) { ev.preventDefault(); });
     btn.addEventListener('click', function () { applyMemoMark(pair[1]); });
   });
+
+  // メモを書いている間、〇/□ボタンをキーボードのすぐ上へ持ち上げる。
+  // iOSのキーボードはページの高さを変えずに画面を覆うので、visualViewport（実際に
+  // 見えている領域）とウィンドウ全体の差分＝キーボードの高さぶんをtransformで逃がす
+  (function () {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    function adjust() {
+      var tb = document.querySelector('.toolbar');
+      if (!tb) return;
+      var memoFocused = viewParts(currentView).type === 'memo' &&
+        document.activeElement && document.activeElement.classList &&
+        document.activeElement.classList.contains('memo');
+      var covered = window.innerHeight - vv.height - vv.offsetTop;
+      var offset = memoFocused ? Math.max(0, covered) : 0;
+      tb.style.transform = offset ? 'translate3d(0, ' + (-offset) + 'px, 0)' : '';
+    }
+    vv.addEventListener('resize', adjust);
+    vv.addEventListener('scroll', adjust);
+    // キーボードの出入りはアニメーションするので、フォーカス移動の直後にも様子を見て追従する
+    document.addEventListener('focusin', function () { setTimeout(adjust, 60); setTimeout(adjust, 350); });
+    document.addEventListener('focusout', function () { setTimeout(adjust, 60); setTimeout(adjust, 350); });
+  })();
 
   // 指の動きに追従するめくり。
   // 横に動き始めた瞬間に1枚つくり、指のXに合わせて角度を更新。
