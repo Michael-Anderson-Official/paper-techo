@@ -1330,7 +1330,7 @@
   <div class="settings-card">
     <h2>設定</h2>
     <p class="settings-label" style="margin-top:0;">手帳の区画</p>
-    <p class="settings-note" style="margin-top:0;">日付・予定・タスク・日記は、必要なものだけ選んで足せます。並び順は足した順です（勉強欄は計画表と連携すると自動で出ます）。</p>
+    <p class="settings-note" style="margin-top:0;">日付・予定・勉強・タスク・日記は、必要なものだけ選んで足せます。並び順は足した順です（勉強欄は手ざわり計画表と連携している日だけ中身が出ます）。</p>
     <div id="sectionChips" class="week-chips"></div>
     <button id="sectionAddBtn" type="button" class="settings-close" style="margin-top:8px; width:auto; padding:8px 14px;">＋ 区画を追加</button>
     <div id="sectionAddMenu" class="week-chips" style="display:none; margin-top:8px;"></div>
@@ -1618,9 +1618,9 @@
     return s;
   }
 
-  // 手帳の区画（日付/予定/タスク/日記）。既定はすべて外れていて、設定の「＋ 区画を追加」で
-  // 自分の手帳を組み立てる（勉強欄は計画表連携の専用区画なのでカスタマイズ対象外・常設）
-  var SECTION_IDS = ['date', 'plan', 'todo', 'diary'];
+  // 手帳の区画（日付/予定/勉強/タスク/日記）。既定はすべて外れていて、設定の「＋ 区画を追加」で
+  // 自分の手帳を組み立てる
+  var SECTION_IDS = ['date', 'plan', 'study', 'todo', 'diary'];
   function getSections() {
     try {
       var arr = JSON.parse(localStorage.getItem('pt:sections'));
@@ -1637,7 +1637,7 @@
     setSections(getSections().filter(function (x) { return x !== id; }));
   }
   function sectionLabel(id) {
-    var key = { date: 'dateLabel', plan: 'planLabel', todo: 'todoLabel', diary: 'diaryLabel' }[id];
+    var key = { date: 'dateLabel', plan: 'planLabel', study: 'studyLabel', todo: 'todoLabel', diary: 'diaryLabel' }[id];
     return key ? tx(key) : id;
   }
 
@@ -1913,19 +1913,21 @@
         body.appendChild(planArea);
       }
 
-      // 勉強欄: 手ざわり計画表から「印刷」される（区画のカスタマイズ対象外・常設）。中身はbuildStudyが入れる。
-      var studyDivider = document.createElement('div');
-      studyDivider.className = 'page-divider study-divider';
-      var studyLabel = document.createElement('span');
-      studyLabel.className = 'label';
-      studyLabel.textContent = tx('studyLabel');
-      studyDivider.appendChild(studyLabel);
-      body.appendChild(studyDivider);
+      // 「勉強」区画: 手ざわり計画表から「印刷」される。中身はbuildStudyが入れる。
+      if (hasSection('study')) {
+        var studyDivider = document.createElement('div');
+        studyDivider.className = 'page-divider study-divider';
+        var studyLabel = document.createElement('span');
+        studyLabel.className = 'label';
+        studyLabel.textContent = tx('studyLabel');
+        studyDivider.appendChild(studyLabel);
+        body.appendChild(studyDivider);
 
-      var studyArea = document.createElement('div');
-      studyArea.className = 'study-area';
-      body.appendChild(studyArea);
-      buildStudy(studyArea, studyDivider, iso, interactive);
+        var studyArea = document.createElement('div');
+        studyArea.className = 'study-area';
+        body.appendChild(studyArea);
+        buildStudy(studyArea, studyDivider, iso, interactive);
+      }
 
       // 「タスク」区画: チェック付きの欄
       if (hasSection('todo')) {
@@ -1974,8 +1976,8 @@
         body.classList.toggle('diary-collapsed', getDiaryHidden());
       }
 
-      // 予定・タスク・日記のどれも足していない日は、設定への導線を1行だけ出す
-      if (!hasSection('plan') && !hasSection('todo') && !hasSection('diary')) {
+      // 予定・勉強・タスク・日記のどれも足していない日は、設定への導線を1行だけ出す
+      if (!hasSection('plan') && !hasSection('study') && !hasSection('todo') && !hasSection('diary')) {
         var noSection = document.createElement('div');
         noSection.className = 'plan-empty';
         noSection.textContent = '設定の「手帳の区画」から、書きたいものを足せます。';
