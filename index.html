@@ -235,6 +235,18 @@
   .page-date .holiday-name { color: var(--sun); margin-left: 8px; }
   .page-date .rokuyo-name { color: var(--ink-soft); margin-left: 8px; }
 
+  /* 試験日カウントダウン（計画表と共有） */
+  .exam-countdown {
+    margin: 0 0 8px;
+    font-family: inherit;
+    color: var(--ink-text);
+    text-align: center;
+    line-height: 1.4;
+  }
+  .exam-countdown .ec-main { font-size: 14px; font-weight: 700; }
+  .exam-countdown .ec-days { color: var(--sun); font-size: 18px; padding: 0 2px; }
+  .exam-countdown .ec-passed { color: var(--sun); font-size: 13px; font-weight: 700; }
+
   /* 本文エリア（計画＋日記の2区画）。罫線に行の高さを合わせる */
   .page-body {
     position: absolute;
@@ -1320,6 +1332,15 @@
     <p class="settings-label">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
+    <p class="settings-label" style="margin-top:16px;">試験日カウントダウン</p>
+    <p class="settings-note" style="margin-top:0;">目標の試験日を入れると、日のページに「あと◯日」を表示します。計画表と共通です。</p>
+    <div class="link-enter-row" style="margin-top:4px;">
+      <input id="examNameInput" type="text" class="write-input" placeholder="試験の名前（例: 予備試験 短答）" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="link-enter-row" style="margin-top:8px; align-items:center;">
+      <input id="examDateInput" type="date" class="write-input">
+      <button id="examClearBtn" type="button" class="settings-close" style="margin-top:0; width:auto; padding:8px 12px; color:#c4645c;">消す</button>
+    </div>
     <p class="settings-label" style="margin-top:16px;">紙の色</p>
     <div id="paperChips" class="week-chips"></div>
     <p class="settings-label" style="margin-top:16px;">書くときの字</p>
@@ -1450,6 +1471,20 @@
   var currentISO = toISO(new Date());
   // ビューは 'day:YYYY-MM-DD'（日のページ）'week:YYYY-MM-DD'（週の見開き・その週の始まりの日）'month:YYYY-MM'（月のカレンダー）
   var currentView = 'day:' + currentISO;
+
+  // 試験日カウントダウン（設定は手帳/計画表どちらでも。同一オリジンでlocalStorage共有）
+  function examDate() { return localStorage.getItem('pt:examDate') || localStorage.getItem('pk:examDate') || ''; }
+  function examName() { return localStorage.getItem('pt:examName') || localStorage.getItem('pk:examName') || '試験'; }
+  function escHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  // その日ページ（iso）から試験日までの残り日数を表示。過ぎていれば当日ページのみねぎらう
+  function examCountdownHTML(iso) {
+    var ed = examDate();
+    if (!ed) return '';
+    var left = Math.round((fromISO(ed).getTime() - fromISO(iso).getTime()) / 86400000);
+    if (left < 0) return (iso === currentISO) ? '<span class="ec-passed">🎯 ' + escHtml(examName()) + ' おつかれさまでした</span>' : '';
+    if (left === 0) return '<span class="ec-main">🎯 ' + escHtml(examName()) + ' は<span class="ec-days">今日</span></span>';
+    return '<span class="ec-main">🎯 ' + escHtml(examName()) + ' まで あと<span class="ec-days">' + left + '</span>日</span>';
+  }
 
   function viewParts(view) {
     var p = view.split(':');
@@ -1809,6 +1844,15 @@
         (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
         '</span>';
       frag.appendChild(head);
+
+      // 試験日カウントダウン（計画表と共有。この日から試験日までの残り日数）
+      var ecHtml = examCountdownHTML(iso);
+      if (ecHtml) {
+        var ec = document.createElement('div');
+        ec.className = 'exam-countdown';
+        ec.innerHTML = ecHtml;
+        frag.appendChild(ec);
+      }
 
       // 「予定」の見出しラベル（令和8年の行・左の余白。タスク/日記と同じ見た目）
       var planLabel = document.createElement('div');
@@ -3713,7 +3757,27 @@
       updateStatsToggle();
       updateGcalUI();
       renderLinkSection();
+      document.getElementById('examNameInput').value = localStorage.getItem('pt:examName') || localStorage.getItem('pk:examName') || '';
+      document.getElementById('examDateInput').value = examDate();
       modal.style.display = 'flex';
+    });
+    // 試験日カウントダウンの設定（pt:に保存。計画表のpk:も表示側では読む）
+    function refreshCurrentPage() { renderPage(document.getElementById('currentPage'), currentView, true); }
+    document.getElementById('examDateInput').addEventListener('change', function () {
+      var v = this.value;
+      if (v) localStorage.setItem('pt:examDate', v); else localStorage.removeItem('pt:examDate');
+      refreshCurrentPage();
+    });
+    document.getElementById('examNameInput').addEventListener('change', function () {
+      var v = this.value.trim();
+      if (v) localStorage.setItem('pt:examName', v); else localStorage.removeItem('pt:examName');
+      refreshCurrentPage();
+    });
+    document.getElementById('examClearBtn').addEventListener('click', function () {
+      localStorage.removeItem('pt:examDate'); localStorage.removeItem('pt:examName');
+      document.getElementById('examDateInput').value = '';
+      document.getElementById('examNameInput').value = '';
+      refreshCurrentPage();
     });
 
     // ---- 計画表と連携（ペアリング） ----
