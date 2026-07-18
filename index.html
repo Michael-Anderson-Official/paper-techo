@@ -235,13 +235,19 @@
   .page-date .holiday-name { color: var(--sun); margin-left: 8px; }
   .page-date .rokuyo-name { color: var(--ink-soft); margin-left: 8px; }
 
-  /* 試験日カウントダウン（計画表と共有） */
+  /* 試験日カウントダウン（計画表と共有）。日付ヘッダーの上の帯。
+     通常フローだと紙の最上端=iPhoneのDynamic Islandの下に潜るので、
+     絶対配置にしてセーフエリアぶん下げる（スマホ用の下げ幅はメディアクエリ内） */
   .exam-countdown {
-    margin: 0 0 8px;
+    position: absolute;
+    top: 2px;
+    left: 0;
+    right: 0;
     font-family: inherit;
     color: var(--ink-text);
     text-align: center;
     line-height: 1.4;
+    pointer-events: none;
   }
   .exam-countdown .ec-main { font-size: 14px; font-weight: 700; }
   .exam-countdown .ec-days { color: var(--sun); font-size: 18px; padding: 0 2px; }
@@ -853,6 +859,9 @@
     .leaf .face.back { border-radius: 0; }
     .page-date {
       top: calc(22px + env(safe-area-inset-top, 0px));
+    }
+    .exam-countdown {
+      top: calc(2px + env(safe-area-inset-top, 0px));   /* Dynamic Island/ノッチの下から */
     }
     .plan-gutter-label {
       top: calc(63px + env(safe-area-inset-top, 0px));
