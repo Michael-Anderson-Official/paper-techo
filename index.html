@@ -274,7 +274,7 @@
     overflow-y: auto;
   }
   .page-text::placeholder { color: var(--placeholder); }
-  .page-text.diary { flex: 1 1 auto; min-height: 0; }
+  .page-text.diary, .page-text.memo { flex: 1 1 auto; min-height: 0; }
   /* 計画欄は「時間つき予定」を書く場所（タップでエディタ）。高さ112px=4行（28px罫線に整合） */
   .plan-area {
     flex: none;
@@ -1301,6 +1301,7 @@
     <button id="tabDay" type="button" class="book-tab active" aria-label="日のページ">日</button>
     <button id="tabWeek" type="button" class="book-tab" aria-label="週の見開き">週</button>
     <button id="tabMonth" type="button" class="book-tab" aria-label="月のカレンダー">月</button>
+    <button id="tabMemo" type="button" class="book-tab" aria-label="メモのページ（日付に関係なく自由に書けます）" style="font-size:12px;">メモ</button>
   </div>
 </div>
 
@@ -1500,12 +1501,17 @@
     if (p[0] === 'week') {
       return { type: 'week', iso: p[1] };
     }
+    if (p[0] === 'memo') {
+      return { type: 'memo' };
+    }
     return { type: 'day', iso: p[1] };
   }
 
-  // 前後のページ（日ページなら前後の日、週なら前後の週、月ページなら前後の月）
+  // 前後のページ（日ページなら前後の日、週なら前後の週、月ページなら前後の月）。
+  // メモは日付に属さない単独ページなので前後が無い＝そのまま返す
   function stepView(view, dir) {
     var v = viewParts(view);
+    if (v.type === 'memo') return view;
     if (v.type === 'day') return 'day:' + addDays(v.iso, dir);
     if (v.type === 'week') return 'week:' + addDays(v.iso, dir * 7);
     var m = v.m + dir, y = v.y;
@@ -1610,7 +1616,8 @@
     planLabel:         '予定',
     studyLabel:        '勉強',
     dateLabel:         '日付',
-    diaryLabel:        '日記'
+    diaryLabel:        '日記',
+    memoPlaceholder:   '日付に関係なく、自由に書けます…'
   };
   function tx(key, vars) {
     var s = WORDS[key] || '';
@@ -1994,6 +2001,30 @@
         '<span class="small">' + warekiOf(wStart) + ' ' + wStart.getFullYear() + '</span>';
       frag.appendChild(head);
       frag.appendChild(buildWeekGrid(v.iso, interactive));
+    } else if (v.type === 'memo') {
+      head.innerHTML = '<span class="big">メモ</span><span class="small">日付にとらわれず、自由に書けます</span>';
+      frag.appendChild(head);
+
+      var mBody = document.createElement('div');
+      mBody.className = 'page-body';
+
+      var memoTa = document.createElement('textarea');
+      memoTa.className = 'page-text memo';
+      memoTa.placeholder = interactive ? tx('memoPlaceholder') : '';
+      memoTa.value = localStorage.getItem('pt:memo') || '';
+      memoTa.spellcheck = false;
+      if (interactive) {
+        memoTa.addEventListener('input', function () {
+          localStorage.setItem('pt:memo', memoTa.value);
+          if (!memoTa._statCounted) { memoTa._statCounted = true; statBump('memo'); }
+          flashSaved();
+        });
+      } else {
+        memoTa.readOnly = true;
+        memoTa.tabIndex = -1;
+      }
+      mBody.appendChild(memoTa);
+      frag.appendChild(mBody);
     } else {
       var first = new Date(v.y, v.m - 1, 1);
       head.innerHTML =
@@ -2281,17 +2312,21 @@
     if (interactive && !silentChrome) updateChrome(view);
   }
 
-  // タブの選択状態と鉛筆ボタンの出し分け（月・週のページに鉛筆は無い）
+  // タブの選択状態と道具の出し分け（月・週のページに鉛筆は無い。メモは日付に属さないので前へ/次へ/今日も無い）
   function updateChrome(view) {
     var type = viewParts(view).type;
     var isDay = type === 'day';
+    var isMemo = type === 'memo';
     document.getElementById('tabDay').classList.toggle('active', isDay);
     document.getElementById('tabWeek').classList.toggle('active', type === 'week');
     document.getElementById('tabMonth').classList.toggle('active', type === 'month');
+    document.getElementById('tabMemo').classList.toggle('active', isMemo);
     var rpB = document.getElementById('replayBtn');
     if (rpB) rpB.style.display = isDay ? '' : 'none';
     var tdB = document.getElementById('todayBtn');
     if (tdB) tdB.textContent = isDay ? '今日' : (type === 'week' ? '今週' : '今月');
+    var pgNav = [document.getElementById('prevBtn'), document.getElementById('nextBtn'), document.getElementById('todayBtn')];
+    pgNav.forEach(function (b) { if (b) b.style.display = isMemo ? 'none' : ''; });
     // 月ビューが現在ページになったら、マスの高さに合わせて予定件数を調整（レイアウト後にrAFで）
     if (type === 'month') requestAnimationFrame(function () { fitMonthCells(); });
   }
@@ -2728,6 +2763,10 @@
     var target = monthSel || currentISO;
     flipTo('day:' + target, target > currentISO ? 1 : -1);
   });
+  document.getElementById('tabMemo').addEventListener('click', function () {
+    statBump('memo');
+    flipTo('memo', 1);
+  });
 
   // 指の動きに追従するめくり。
   // 横に動き始めた瞬間に1枚つくり、指のXに合わせて角度を更新。
@@ -2759,6 +2798,7 @@
 
     book.addEventListener('pointermove', function (ev) {
       if (startX == null) return;
+      if (viewParts(currentView).type === 'memo') return; // メモは単独ページなので指でめくらない（縦スクロールはそのまま効く）
       var dx = ev.clientX - startX;
       var dy = ev.clientY - startY;
       if (!active) {
