@@ -1719,10 +1719,24 @@
     var id = getWriteFont();
     var def = WRITE_FONTS.filter(function (f) { return f[0] === id; })[0];
     document.body.style.setProperty('--write-font', def[2]);
+    refreshMemoFont();
   }
 
   function applyPaperColor() {
     document.body.setAttribute('data-paper', getPaperColor());
+    refreshMemoFont();
+  }
+
+  // メモ欄は唯一のcontenteditableで、SafariはCSS変数(--write-font)の変更をページを離れず
+  // 開いたまま反映できないことがある（他の書く欄はtextareaで問題ない）。フォント/紙のテーマを
+  // 変えた直後に強制的に再描画させて確実に反映する
+  function refreshMemoFont() {
+    var memo = document.querySelector('.page-text.memo');
+    if (!memo) return;
+    var d = memo.style.display;
+    memo.style.display = 'none';
+    void memo.offsetHeight;
+    memo.style.display = d;
   }
 
   // ---- ストレージ ----
