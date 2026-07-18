@@ -1329,7 +1329,12 @@
 <div id="settingsModal" class="settings-modal" style="display:none;">
   <div class="settings-card">
     <h2>設定</h2>
-    <p class="settings-label">週の始まり</p>
+    <p class="settings-label" style="margin-top:0;">手帳の区画</p>
+    <p class="settings-note" style="margin-top:0;">日付・予定・タスク・日記は、必要なものだけ選んで足せます。並び順は足した順です（勉強欄は計画表と連携すると自動で出ます）。</p>
+    <div id="sectionChips" class="week-chips"></div>
+    <button id="sectionAddBtn" type="button" class="settings-close" style="margin-top:8px; width:auto; padding:8px 14px;">＋ 区画を追加</button>
+    <div id="sectionAddMenu" class="week-chips" style="display:none; margin-top:8px;"></div>
+    <p class="settings-label" style="margin-top:16px;">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
     <p class="settings-label" style="margin-top:16px;">試験日カウントダウン</p>
@@ -1603,13 +1608,39 @@
     todoLabel:         'タスク',
     todoAdd:           '＋ タスクを追加',
     planLabel:         '予定',
-    studyLabel:        '勉強'
+    studyLabel:        '勉強',
+    dateLabel:         '日付',
+    diaryLabel:        '日記'
   };
   function tx(key, vars) {
     var s = WORDS[key] || '';
     if (vars) { for (var k in vars) s = s.replace('{' + k + '}', vars[k]); }
     return s;
   }
+
+  // 手帳の区画（日付/予定/タスク/日記）。既定はすべて外れていて、設定の「＋ 区画を追加」で
+  // 自分の手帳を組み立てる（勉強欄は計画表連携の専用区画なのでカスタマイズ対象外・常設）
+  var SECTION_IDS = ['date', 'plan', 'todo', 'diary'];
+  function getSections() {
+    try {
+      var arr = JSON.parse(localStorage.getItem('pt:sections'));
+      return Array.isArray(arr) ? arr.filter(function (id) { return SECTION_IDS.indexOf(id) !== -1; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSections(arr) { localStorage.setItem('pt:sections', JSON.stringify(arr)); }
+  function hasSection(id) { return getSections().indexOf(id) !== -1; }
+  function addSection(id) {
+    var arr = getSections();
+    if (arr.indexOf(id) === -1) { arr.push(id); setSections(arr); }
+  }
+  function removeSection(id) {
+    setSections(getSections().filter(function (x) { return x !== id; }));
+  }
+  function sectionLabel(id) {
+    var key = { date: 'dateLabel', plan: 'planLabel', todo: 'todoLabel', diary: 'diaryLabel' }[id];
+    return key ? tx(key) : id;
+  }
+
   // 常に表示され得る静的DOMの文言をことばづかいに合わせて更新する
   function applyWording() {
     function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
@@ -1836,49 +1867,53 @@
       var d = fromISO(iso);
       var holiday = HOLIDAYS[iso] || '';
       var rokuyo = getRokuyoEnabled() ? rokuyoOf(iso) : '';
-      head.innerHTML =
-        '<span class="big' + (holiday ? ' is-holiday' : '') + '">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
-        '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span></span>' +
-        '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() +
-        (holiday ? '<span class="holiday-name">' + holiday + '</span>' : '') +
-        (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
-        '</span>';
-      frag.appendChild(head);
 
-      // 試験日カウントダウン（計画表と共有。この日から試験日までの残り日数）
-      var ecHtml = examCountdownHTML(iso);
-      if (ecHtml) {
-        var ec = document.createElement('div');
-        ec.className = 'exam-countdown';
-        ec.innerHTML = ecHtml;
-        frag.appendChild(ec);
+      // 「日付」区画: 設定で足していなければ表示しない（試験日カウントダウンも同じ区画扱い）
+      if (hasSection('date')) {
+        head.innerHTML =
+          '<span class="big' + (holiday ? ' is-holiday' : '') + '">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
+          '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span></span>' +
+          '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() +
+          (holiday ? '<span class="holiday-name">' + holiday + '</span>' : '') +
+          (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
+          '</span>';
+        frag.appendChild(head);
+
+        // 試験日カウントダウン（計画表と共有。この日から試験日までの残り日数）
+        var ecHtml = examCountdownHTML(iso);
+        if (ecHtml) {
+          var ec = document.createElement('div');
+          ec.className = 'exam-countdown';
+          ec.innerHTML = ecHtml;
+          frag.appendChild(ec);
+        }
       }
 
-      // 「予定」の見出しラベル（令和8年の行・左の余白。タスク/日記と同じ見た目）
-      var planLabel = document.createElement('div');
-      planLabel.className = 'plan-gutter-label';
-      planLabel.textContent = tx('planLabel');
-      frag.appendChild(planLabel);
-
-      // 本文: 上=きょうの計画（時間つき予定・タップで書く）、区切り線、下=日記
+      // 本文: 区画（予定・勉強・タスク・日記）を、設定で足した分だけ並べる
       var body = document.createElement('div');
       body.className = 'page-body';
 
-      // 計画欄＝予定を書く場所。中身はrenderPage後にloadDayEventsが入れる。
+      // 「予定」区画＝カレンダーの予定を書く場所。中身はrenderPage後にloadDayEventsが入れる。
       // タップでエディタが開く（予定の行以外＝空きスペースをタップ＝新規追加）
-      var planArea = document.createElement('div');
-      planArea.className = 'plan-area';
-      if (interactive) {
-        planArea.addEventListener('click', function (ev) {
-          // 予定の行（自分の予定＝編集／すべて見る）が自前で処理していなければ新規追加
-          if (ev.target.closest('.page-event.is-mine, .page-event-more')) return;
-          openEventEditor(iso, -1);
-        });
-      }
-      body.appendChild(planArea);
+      if (hasSection('plan')) {
+        var planLabel = document.createElement('div');
+        planLabel.className = 'plan-gutter-label';
+        planLabel.textContent = tx('planLabel');
+        frag.appendChild(planLabel);
 
-      // 勉強欄: 手ざわり計画表から「印刷」される。中身はbuildStudyが入れる。
-      // 予定・タスクと同じく“常に同じ高さ”で確保する（空の日も）＝下のタスク・日記の罫線位置が日替わりでズレない
+        var planArea = document.createElement('div');
+        planArea.className = 'plan-area';
+        if (interactive) {
+          planArea.addEventListener('click', function (ev) {
+            // 予定の行（自分の予定＝編集／すべて見る）が自前で処理していなければ新規追加
+            if (ev.target.closest('.page-event.is-mine, .page-event-more')) return;
+            openEventEditor(iso, -1);
+          });
+        }
+        body.appendChild(planArea);
+      }
+
+      // 勉強欄: 手ざわり計画表から「印刷」される（区画のカスタマイズ対象外・常設）。中身はbuildStudyが入れる。
       var studyDivider = document.createElement('div');
       studyDivider.className = 'page-divider study-divider';
       var studyLabel = document.createElement('span');
@@ -1892,47 +1927,60 @@
       body.appendChild(studyArea);
       buildStudy(studyArea, studyDivider, iso, interactive);
 
-      // やること（ToDo）: チェック付きの欄。予定と日記の間
-      var todoDivider = document.createElement('div');
-      todoDivider.className = 'page-divider';
-      var todoLabel = document.createElement('span');
-      todoLabel.className = 'label';
-      todoLabel.textContent = tx('todoLabel');
-      todoDivider.appendChild(todoLabel);
-      body.appendChild(todoDivider);
+      // 「タスク」区画: チェック付きの欄
+      if (hasSection('todo')) {
+        var todoDivider = document.createElement('div');
+        todoDivider.className = 'page-divider';
+        var todoLabel = document.createElement('span');
+        todoLabel.className = 'label';
+        todoLabel.textContent = tx('todoLabel');
+        todoDivider.appendChild(todoLabel);
+        body.appendChild(todoDivider);
 
-      var todoArea = document.createElement('div');
-      todoArea.className = 'todo-area';
-      body.appendChild(todoArea);
-      if (interactive) buildTodos(todoArea, iso);
-
-      var divider = document.createElement('div');
-      divider.className = 'page-divider';
-      var dLabel = document.createElement('span');
-      dLabel.className = 'label';
-      dLabel.textContent = '日記';
-      divider.appendChild(dLabel);
-      body.appendChild(divider);
-
-      var diaryTa = document.createElement('textarea');
-      diaryTa.className = 'page-text diary';
-      diaryTa.placeholder = interactive ? tx('diaryPlaceholder') : '';
-      diaryTa.value = localStorage.getItem(keyDiary(iso)) || '';
-      diaryTa.spellcheck = false;
-      if (interactive) {
-        diaryTa.addEventListener('input', function () {
-          localStorage.setItem(keyDiary(iso), diaryTa.value);
-          if (!diaryTa._statCounted) { diaryTa._statCounted = true; statBump('diary'); }
-          flashSaved();
-        });
-      } else {
-        diaryTa.readOnly = true;
-        diaryTa.tabIndex = -1;
+        var todoArea = document.createElement('div');
+        todoArea.className = 'todo-area';
+        body.appendChild(todoArea);
+        if (interactive) buildTodos(todoArea, iso);
       }
-      body.appendChild(diaryTa);
 
-      // 日記の表示/非表示は設定「日記を非表示」で切り替える（予定を見せるとき隠せる）
-      body.classList.toggle('diary-collapsed', getDiaryHidden());
+      // 「日記」区画
+      if (hasSection('diary')) {
+        var divider = document.createElement('div');
+        divider.className = 'page-divider';
+        var dLabel = document.createElement('span');
+        dLabel.className = 'label';
+        dLabel.textContent = tx('diaryLabel');
+        divider.appendChild(dLabel);
+        body.appendChild(divider);
+
+        var diaryTa = document.createElement('textarea');
+        diaryTa.className = 'page-text diary';
+        diaryTa.placeholder = interactive ? tx('diaryPlaceholder') : '';
+        diaryTa.value = localStorage.getItem(keyDiary(iso)) || '';
+        diaryTa.spellcheck = false;
+        if (interactive) {
+          diaryTa.addEventListener('input', function () {
+            localStorage.setItem(keyDiary(iso), diaryTa.value);
+            if (!diaryTa._statCounted) { diaryTa._statCounted = true; statBump('diary'); }
+            flashSaved();
+          });
+        } else {
+          diaryTa.readOnly = true;
+          diaryTa.tabIndex = -1;
+        }
+        body.appendChild(diaryTa);
+
+        // 日記の表示/非表示は設定「日記を非表示」で切り替える（予定を見せるとき隠せる）
+        body.classList.toggle('diary-collapsed', getDiaryHidden());
+      }
+
+      // 予定・タスク・日記のどれも足していない日は、設定への導線を1行だけ出す
+      if (!hasSection('plan') && !hasSection('todo') && !hasSection('diary')) {
+        var noSection = document.createElement('div');
+        noSection.className = 'plan-empty';
+        noSection.textContent = '設定の「手帳の区画」から、書きたいものを足せます。';
+        body.appendChild(noSection);
+      }
       frag.appendChild(body);
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
@@ -2534,18 +2582,19 @@
     var root = document.getElementById('currentPage');
     var book = document.getElementById('book');
     var btn = document.getElementById('replayBtn');
-    var diary = root.querySelector('.page-text.diary');
+    var diary = root.querySelector('.page-text.diary');   // 「日記」区画を外している日はnull
     // 予定の行（「すべて見る」は演出対象外）
     var evLines = Array.prototype.slice.call(root.querySelectorAll('.page-event:not(.page-event-more)'));
-    var fullDiary = diary.value;
+    var fullDiary = diary ? diary.value : '';
     if (!fullDiary && evLines.length === 0) return; // 白紙は再生しない
 
-    // 日付ヘッダーと予定のテキストノード（色付きspan込み・見た目の順）
-    var headNodes = textNodesOf(root.querySelector('.page-date'));
+    // 日付ヘッダーと予定のテキストノード（色付きspan込み・見た目の順。「日付」区画を外している日はheadNodesが空になる）
+    var headEl = root.querySelector('.page-date');
+    var headNodes = headEl ? textNodesOf(headEl) : [];
     var evNodeGroups = evLines.map(function (el) { return textNodesOf(el); });
 
     // まっさらにする
-    diary.value = '';
+    if (diary) diary.value = '';
     headNodes.forEach(function (t) { t.node.nodeValue = ''; });
     evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = ''; }); });
 
@@ -2555,7 +2604,7 @@
       if (finished) return;
       finished = true;
       timers.forEach(clearTimeout);
-      diary.value = fullDiary;
+      if (diary) diary.value = fullDiary;
       headNodes.forEach(function (t) { t.node.nodeValue = t.full; });
       evNodeGroups.forEach(function (g) { g.forEach(function (t) { t.node.nodeValue = t.full; }); });
       book.classList.remove('replaying');
@@ -3688,6 +3737,60 @@
       });
     }
 
+    // 手帳の区画（日付/予定/タスク/日記）。既定はすべて外れていて、＋で足す（ユーザーが自分の手帳を組み立てる）
+    var sectionChips = document.getElementById('sectionChips');
+    var sectionAddBtn = document.getElementById('sectionAddBtn');
+    var sectionAddMenu = document.getElementById('sectionAddMenu');
+    function renderSectionChips() {
+      sectionAddMenu.style.display = 'none';
+      sectionChips.innerHTML = '';
+      var active = getSections();
+      if (active.length === 0) {
+        var note = document.createElement('div');
+        note.className = 'settings-note';
+        note.style.marginTop = '0';
+        note.textContent = 'まだ何も足していません。';
+        sectionChips.appendChild(note);
+      }
+      active.forEach(function (id) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'active';
+        b.style.cssText = 'width:auto; padding:0 12px 0 16px; border-radius:20px;';
+        b.textContent = sectionLabel(id) + '  ×';
+        b.addEventListener('click', function () {
+          removeSection(id);
+          renderSectionChips();
+          refreshCurrentPage();
+          flashSaved();
+        });
+        sectionChips.appendChild(b);
+      });
+      renderSectionAddMenu();
+    }
+    function renderSectionAddMenu() {
+      var active = getSections();
+      var rest = SECTION_IDS.filter(function (id) { return active.indexOf(id) === -1; });
+      sectionAddBtn.style.display = rest.length === 0 ? 'none' : '';
+      sectionAddMenu.innerHTML = '';
+      rest.forEach(function (id) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
+        b.textContent = '＋ ' + sectionLabel(id);
+        b.addEventListener('click', function () {
+          addSection(id);
+          renderSectionChips();
+          refreshCurrentPage();
+          flashSaved();
+        });
+        sectionAddMenu.appendChild(b);
+      });
+    }
+    sectionAddBtn.addEventListener('click', function () {
+      sectionAddMenu.style.display = sectionAddMenu.style.display === 'none' ? 'flex' : 'none';
+    });
+
     // つかいかたの統計トグル
     var statsToggle = document.getElementById('statsToggle');
     function updateStatsToggle() {
@@ -3748,6 +3851,7 @@
 
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
+      renderSectionChips();
       renderChips();
       renderPaperChips();
       renderFontChips();
