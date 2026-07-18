@@ -275,7 +275,13 @@
   }
   .page-text::placeholder { color: var(--placeholder); }
   .page-text.diary, .page-text.memo { flex: 1 1 auto; min-height: 0; }
-  .page-text.memo { white-space: pre-wrap; word-break: break-word; }
+  .page-text.memo {
+    white-space: pre-wrap;
+    word-break: break-word;
+    /* bodyはuser-select:noneだが、メモは文字を選んで〇/□で囲むので選択を許可（iOSでは無いと選択不能） */
+    -webkit-user-select: text;
+    user-select: text;
+  }
   .page-text.memo:empty::before { content: attr(data-placeholder); color: var(--placeholder); pointer-events: none; }
   /* 選んだ文字を〇や□で囲む（手書きで丸をつける感覚） */
   .mark-circle, .mark-box {
@@ -1719,24 +1725,29 @@
     var id = getWriteFont();
     var def = WRITE_FONTS.filter(function (f) { return f[0] === id; })[0];
     document.body.style.setProperty('--write-font', def[2]);
-    refreshMemoFont();
+    applyMemoFont();
   }
 
   function applyPaperColor() {
     document.body.setAttribute('data-paper', getPaperColor());
-    refreshMemoFont();
+    applyMemoFont();
   }
 
-  // メモ欄は唯一のcontenteditableで、SafariはCSS変数(--write-font)の変更をページを離れず
-  // 開いたまま反映できないことがある（他の書く欄はtextareaで問題ない）。フォント/紙のテーマを
-  // 変えた直後に強制的に再描画させて確実に反映する
-  function refreshMemoFont() {
-    var memo = document.querySelector('.page-text.memo');
-    if (!memo) return;
-    var d = memo.style.display;
-    memo.style.display = 'none';
-    void memo.offsetHeight;
-    memo.style.display = d;
+  // メモ欄は唯一のcontenteditableで、iOSのSafariがCSS変数(--write-font)の変更を
+  // 反映してくれない（他の書く欄はtextareaで問題ない）。CSSに頼らず、フォントを
+  // インラインstyleで直接当てる。黒板=チョーク・電光掲示板=ドット文字の全体強制も
+  // ここで同じ値を再現する（インラインはCSSの強制ルールより強いため）
+  function memoFontFamily() {
+    var paper = getPaperColor();
+    if (paper === 'board') return "'Yomogi', 'Klee One', cursive";
+    if (paper === 'led') return "'DotGothic16', monospace";
+    var def = WRITE_FONTS.filter(function (f) { return f[0] === getWriteFont(); })[0];
+    return def[2] + ", 'Klee One', serif";
+  }
+  function applyMemoFont() {
+    document.querySelectorAll('.page-text.memo').forEach(function (el) {
+      el.style.fontFamily = memoFontFamily();
+    });
   }
 
   // ---- ストレージ ----
@@ -2118,6 +2129,7 @@
 
       var memoDiv = document.createElement('div');
       memoDiv.className = 'page-text memo';
+      memoDiv.style.fontFamily = memoFontFamily();   // iOS Safariの都合でCSS変数でなくインライン直指定（applyMemoFont参照）
       memoDiv.setAttribute('data-placeholder', tx('memoPlaceholder'));
       memoDiv.innerHTML = sanitizeMemoHtml(localStorage.getItem('pt:memo') || '');
       memoDiv.spellcheck = false;
