@@ -341,6 +341,9 @@
     box-shadow: 0 8px 18px rgba(40, 30, 15, 0.28);
     border-color: rgba(120, 100, 60, 0.5);
   }
+  /* ドラッグ中はゆれ(jiggle)を止める。CSSアニメのtransformはインライン指定より強く、
+     場所を空けるスライド(FLIPのtransform)を打ち消してしまうため */
+  .page-body.dragging-active .section-block.edit-item { animation: none; }
   @media (prefers-reduced-motion: reduce) {
     .page-body.editing .section-block.edit-item { animation: none; }
   }
@@ -2924,43 +2927,100 @@
     body.insertBefore(picker, addTile.nextSibling);
   }
 
-  // 区画のドラッグ並び替え（指の動きに追従→離した位置で挿入先を決める。
-  // 他の区画のライブシフトはせず、ドロップ時に一括で並べ替える簡易版）
+  // 区画のドラッグ並び替え（iPhoneのホーム画面のウィジェットと同じ「ライブ入れ替え」）。
+  // つまんだ区画は指に追従して浮き、他の区画はまたぐたびにその場でDOMを入れ替えて場所を空ける。
+  // 入れ替えで動く区画はFLIP（前後の位置差を一旦transformで打ち消してから0へ遷移）でぬるっと滑らせる。
   function attachSectionDrag(block, container) {
-    var startY = null, dragging = false, others = [];
+    var startY = null, startTop = null, dragging = false;
+
+    // 直前のDOM位置から新しい位置へ、他の区画をスライドさせる（つまんでいる本人は除外）
+    function flipSiblings(mutate) {
+      var items = Array.prototype.filter.call(
+        container.querySelectorAll('.section-block.edit-item[data-sec]'),
+        function (c) { return c !== block; });
+      var before = items.map(function (c) { return c.getBoundingClientRect().top; });
+      mutate();
+      items.forEach(function (c, i) {
+        var delta = before[i] - c.getBoundingClientRect().top;
+        if (!delta) return;
+        c.style.transition = 'none';
+        c.style.transform = 'translateY(' + delta + 'px)';
+        // 次フレームで0へ戻す＝スライドして見える
+        requestAnimationFrame(function () {
+          c.style.transition = 'transform 0.18s ease';
+          c.style.transform = '';
+        });
+      });
+    }
+
+    function positionToFinger(fingerTop) {
+      // つまんだ本人を「natural位置＋指の移動量」に置く（DOMが入れ替わってもズレないよう毎回natから計算）
+      block.style.transform = '';
+      var natTop = block.getBoundingClientRect().top;
+      block.style.transform = 'translateY(' + (fingerTop - natTop) + 'px)';
+    }
+
     function onMove(ev) {
       var dy = ev.clientY - startY;
       if (!dragging) {
         if (Math.abs(dy) < 6) return;
         dragging = true;
         block.classList.add('dragging');
-        others = Array.prototype.filter.call(
-          container.querySelectorAll('.section-block.edit-item[data-sec]'),
-          function (c) { return c !== block; }
-        );
+        container.classList.add('dragging-active');   // 全区画のゆれを止めてスライドを見せる
         try { block.setPointerCapture(ev.pointerId); } catch (e) {}
       }
-      block.style.transform = 'translateY(' + dy + 'px)';
+      var fingerTop = startTop + dy;
+      positionToFinger(fingerTop);
+
+      // つまんでいる区画の見た目の中心
+      var h = block.getBoundingClientRect().height;
+      var centerY = fingerTop + h / 2;
+      // 上下の隣とだけ比べ、またいだら1つ入れ替える（1フレーム1手で安定させる）
+      var prev = block.previousElementSibling;
+      var next = block.nextElementSibling;
+      if (prev && prev.matches('.section-block.edit-item[data-sec]')) {
+        var pr = prev.getBoundingClientRect();
+        if (centerY < pr.top + pr.height / 2) {
+          flipSiblings(function () { container.insertBefore(block, prev); });
+          positionToFinger(fingerTop);
+          ev.preventDefault();
+          return;
+        }
+      }
+      if (next && next.matches('.section-block.edit-item[data-sec]')) {
+        var nr = next.getBoundingClientRect();
+        if (centerY > nr.top + nr.height / 2) {
+          flipSiblings(function () { container.insertBefore(block, next.nextSibling); });
+          positionToFinger(fingerTop);
+        }
+      }
       ev.preventDefault();
     }
-    function onUp(ev) {
+    function onUp() {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onUp);
       if (!dragging) { startY = null; return; }
+      // つまんだ区画をFLIPで所定位置へ吸い付かせてから確定
+      var from = block.getBoundingClientRect().top;
       block.classList.remove('dragging');
       block.style.transform = '';
-      var dropY = ev.clientY;
-      var target = null, before = true;
-      for (var i = 0; i < others.length; i++) {
-        var r = others[i].getBoundingClientRect();
-        if (dropY < r.top + r.height / 2) { target = others[i]; before = true; break; }
-      }
-      if (!target && others.length) { target = others[others.length - 1]; before = false; }
-      if (target) {
-        var parent = target.parentNode;
-        parent.insertBefore(block, before ? target : target.nextSibling);
-      }
+      var to = block.getBoundingClientRect().top;
+      block.style.transition = 'none';
+      block.style.transform = 'translateY(' + (from - to) + 'px)';
+      requestAnimationFrame(function () {
+        block.style.transition = 'transform 0.18s ease';
+        block.style.transform = '';
+      });
+      // 吸い付きアニメが終わってからゆれを戻す（すぐ戻すと着地のスライドが打ち消される）。
+      // 併せて入れ替えで動いた区画に残ったinlineのtransition/transformも消す
+      setTimeout(function () {
+        container.classList.remove('dragging-active');
+        block.style.transition = '';
+        Array.prototype.forEach.call(
+          container.querySelectorAll('.section-block.edit-item[data-sec]'),
+          function (c) { c.style.transition = ''; c.style.transform = ''; });
+      }, 200);
       var order = Array.prototype.map.call(
         container.querySelectorAll('.section-block.edit-item[data-sec]'),
         function (c) { return c.dataset.sec; }
@@ -2972,6 +3032,7 @@
     block.addEventListener('pointerdown', function (ev) {
       if (ev.target.closest('.edit-badge, .edit-resize')) return;
       startY = ev.clientY;
+      startTop = block.getBoundingClientRect().top;
       dragging = false;
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
