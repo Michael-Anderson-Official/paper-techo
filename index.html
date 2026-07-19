@@ -315,9 +315,18 @@
   .section-row .section-block + .section-block .page-divider .label { left: 8px; max-width: none; }
 
   /* ---- 区画の編集モード（日のページを長押し。iPhoneのホーム画面の編集に寄せた操作感） ---- */
-  /* 編集中は半幅の2段組をやめ、ドラッグで並び替えられる1列のリストで組み直して描く（buildEditableBody） */
-  .page-body.editing { position: relative; }
-  .section-block.edit-item { width: auto; padding: 0 32px 0 34px; }
+  /* 編集中も半幅は半分の幅で表示する。折り返しの2段組にして、半幅どうしは横に並ぶ */
+  .page-body.editing {
+    position: relative;
+    flex-flow: row wrap;
+    align-content: flex-start;
+  }
+  .section-block.edit-item { width: 100%; padding: 0 32px 0 34px; }
+  .section-block.edit-item[data-width="half"] { width: calc(50% - 2px); }
+  .page-body.editing .edit-add-tile,
+  .page-body.editing .empty-add-tile,
+  .page-body.editing .edit-add-picker,
+  .page-body.editing .edit-hint { width: 100%; }
   /* 本文はドラッグ中に触れないようにする（バッジ・つまみだけ操作できる） */
   .page-body.editing .section-block.edit-item > *:not(.edit-badge):not(.edit-resize) { pointer-events: none; }
   @keyframes secJiggle {
@@ -2931,21 +2940,22 @@
   // つまんだ区画は指に追従して浮き、他の区画はまたぐたびにその場でDOMを入れ替えて場所を空ける。
   // 入れ替えで動く区画はFLIP（前後の位置差を一旦transformで打ち消してから0へ遷移）でぬるっと滑らせる。
   function attachSectionDrag(block, container) {
-    var startY = null, startTop = null, dragging = false;
+    var startX = null, startY = null, startLeft = null, startTop = null, dragging = false;
 
-    // 直前のDOM位置から新しい位置へ、他の区画をスライドさせる（つまんでいる本人は除外）
+    // 直前のDOM位置から新しい位置へ、他の区画をスライドさせる（つまんでいる本人は除外）。
+    // 2段組（半幅）では上下だけでなく左右にも動くのでtranslateはXYの両方で打ち消す
     function flipSiblings(mutate) {
       var items = Array.prototype.filter.call(
         container.querySelectorAll('.section-block.edit-item[data-sec]'),
         function (c) { return c !== block; });
-      var before = items.map(function (c) { return c.getBoundingClientRect().top; });
+      var before = items.map(function (c) { var r = c.getBoundingClientRect(); return { x: r.left, y: r.top }; });
       mutate();
       items.forEach(function (c, i) {
-        var delta = before[i] - c.getBoundingClientRect().top;
-        if (!delta) return;
+        var r = c.getBoundingClientRect();
+        var dx = before[i].x - r.left, dy = before[i].y - r.top;
+        if (!dx && !dy) return;
         c.style.transition = 'none';
-        c.style.transform = 'translateY(' + delta + 'px)';
-        // 次フレームで0へ戻す＝スライドして見える
+        c.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
         requestAnimationFrame(function () {
           c.style.transition = 'transform 0.18s ease';
           c.style.transform = '';
@@ -2953,47 +2963,44 @@
       });
     }
 
-    function positionToFinger(fingerTop) {
+    function positionToFinger(fingerLeft, fingerTop) {
       // つまんだ本人を「natural位置＋指の移動量」に置く（DOMが入れ替わってもズレないよう毎回natから計算）
       block.style.transform = '';
-      var natTop = block.getBoundingClientRect().top;
-      block.style.transform = 'translateY(' + (fingerTop - natTop) + 'px)';
+      var nr = block.getBoundingClientRect();
+      block.style.transform = 'translate(' + (fingerLeft - nr.left) + 'px,' + (fingerTop - nr.top) + 'px)';
+    }
+
+    // 現在のポインタ中心が、読み順（上→下、同じ行なら左→右）でどの区画の前に入るかを求めて並べ替える
+    function reorderTo(px, py) {
+      var sibs = Array.prototype.filter.call(
+        container.querySelectorAll('.section-block.edit-item[data-sec]'),
+        function (c) { return c !== block; });
+      var refNode = null;
+      for (var i = 0; i < sibs.length; i++) {
+        var r = sibs[i].getBoundingClientRect();
+        var cy = r.top + r.height / 2, cx = r.left + r.width / 2, tol = r.height * 0.5;
+        var after = (py < cy - tol) || (Math.abs(py - cy) <= tol && px < cx);
+        if (after) { refNode = sibs[i]; break; }
+      }
+      var anchor = refNode || container.querySelector('.edit-add-tile');
+      if (block.nextElementSibling === anchor) return;   // 既に正しい位置なら何もしない（FLIPの連発を防ぐ）
+      flipSiblings(function () { container.insertBefore(block, anchor); });
     }
 
     function onMove(ev) {
-      var dy = ev.clientY - startY;
+      var dx = ev.clientX - startX, dy = ev.clientY - startY;
       if (!dragging) {
-        if (Math.abs(dy) < 6) return;
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
         dragging = true;
         block.classList.add('dragging');
         container.classList.add('dragging-active');   // 全区画のゆれを止めてスライドを見せる
         try { block.setPointerCapture(ev.pointerId); } catch (e) {}
       }
-      var fingerTop = startTop + dy;
-      positionToFinger(fingerTop);
-
-      // つまんでいる区画の見た目の中心
-      var h = block.getBoundingClientRect().height;
-      var centerY = fingerTop + h / 2;
-      // 上下の隣とだけ比べ、またいだら1つ入れ替える（1フレーム1手で安定させる）
-      var prev = block.previousElementSibling;
-      var next = block.nextElementSibling;
-      if (prev && prev.matches('.section-block.edit-item[data-sec]')) {
-        var pr = prev.getBoundingClientRect();
-        if (centerY < pr.top + pr.height / 2) {
-          flipSiblings(function () { container.insertBefore(block, prev); });
-          positionToFinger(fingerTop);
-          ev.preventDefault();
-          return;
-        }
-      }
-      if (next && next.matches('.section-block.edit-item[data-sec]')) {
-        var nr = next.getBoundingClientRect();
-        if (centerY > nr.top + nr.height / 2) {
-          flipSiblings(function () { container.insertBefore(block, next.nextSibling); });
-          positionToFinger(fingerTop);
-        }
-      }
+      var fingerLeft = startLeft + dx, fingerTop = startTop + dy;
+      positionToFinger(fingerLeft, fingerTop);
+      var r = block.getBoundingClientRect();
+      reorderTo(r.left + r.width / 2, r.top + r.height / 2);
+      positionToFinger(fingerLeft, fingerTop);
       ev.preventDefault();
     }
     function onUp() {
@@ -3001,13 +3008,13 @@
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onUp);
       if (!dragging) { startY = null; return; }
-      // つまんだ区画をFLIPで所定位置へ吸い付かせてから確定
-      var from = block.getBoundingClientRect().top;
+      // つまんだ区画をFLIPで所定位置へ吸い付かせてから確定（XYとも）
+      var f = block.getBoundingClientRect();
       block.classList.remove('dragging');
       block.style.transform = '';
-      var to = block.getBoundingClientRect().top;
+      var t = block.getBoundingClientRect();
       block.style.transition = 'none';
-      block.style.transform = 'translateY(' + (from - to) + 'px)';
+      block.style.transform = 'translate(' + (f.left - t.left) + 'px,' + (f.top - t.top) + 'px)';
       requestAnimationFrame(function () {
         block.style.transition = 'transform 0.18s ease';
         block.style.transform = '';
@@ -3031,8 +3038,9 @@
     }
     block.addEventListener('pointerdown', function (ev) {
       if (ev.target.closest('.edit-badge, .edit-resize')) return;
-      startY = ev.clientY;
-      startTop = block.getBoundingClientRect().top;
+      var r = block.getBoundingClientRect();
+      startX = ev.clientX; startY = ev.clientY;
+      startLeft = r.left; startTop = r.top;
       dragging = false;
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
@@ -3048,18 +3056,22 @@
     handle.setAttribute('aria-label', sectionLabel(sec) + 'の幅を変える');
     block.appendChild(handle);
 
-    var startX = null, startWidth = null, dragging = false;
+    var startX = null, startWidth = null, fullW = null, dragging = false;
+    function previewWidth(ev) {
+      var dx = ev.clientX - startX;
+      var shrink = side === 'right' ? -dx : dx;   // 右端は左へ、左端は右へつまむほど縮む＝内側へで縮む
+      // 全幅いっぱい〜半分の少し下まで、指の動きに追従して幅を変える
+      return Math.max(fullW * 0.42, Math.min(fullW, startWidth - shrink));
+    }
     function onMove(ev) {
       var dx = ev.clientX - startX;
-      var shrink = side === 'right' ? -dx : dx;   // 右端は左へ、左端は右へつまむほど縮む
       if (!dragging) {
-        if (Math.abs(shrink) < 4) return;
+        if (Math.abs(dx) < 4) return;
         dragging = true;
         block.classList.add('resizing');
         try { handle.setPointerCapture(ev.pointerId); } catch (e) {}
       }
-      var w = Math.max(startWidth * 0.42, Math.min(startWidth, startWidth - shrink));
-      block.style.width = w + 'px';
+      block.style.width = previewWidth(ev) + 'px';
       block.style.flex = '0 0 auto';
       ev.preventDefault();
     }
@@ -3071,9 +3083,7 @@
       block.style.flex = '';
       if (dragging) {
         block.classList.remove('resizing');
-        var dx = ev.clientX - startX;
-        var shrink = side === 'right' ? -dx : dx;
-        var wantHalf = shrink > startWidth * 0.22;   // 22%以上つまんだら半幅に確定
+        var wantHalf = previewWidth(ev) < fullW * 0.72;   // 全幅の72%より狭ければ半幅に確定
         var was = sectionWidth(sec) === 'half';
         if (wantHalf !== was) {
           setSectionWidth(sec, wantHalf ? 'half' : 'full');
@@ -3087,6 +3097,7 @@
       ev.stopPropagation();   // 区画自体の並び替えドラッグを誘発しない
       startX = ev.clientX;
       startWidth = block.getBoundingClientRect().width;
+      fullW = (block.parentElement && block.parentElement.clientWidth) || startWidth;
       dragging = false;
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
