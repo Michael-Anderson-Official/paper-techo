@@ -196,6 +196,11 @@
       url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0 0.32 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
     background-position: 0 0;
   }
+  /* 日のページは「日付」区画が本文フローに入り、開始位置がheadぶんの88pxでなく22pxになった。
+     罫線もそこに合わせて位相をずらす（22pxを基準に28px周期を刻み直す） */
+  .paper.is-day-flow {
+    background-position: 0 0, 0 22px, 0 0;
+  }
 
   /* 綴じ（左端のステッチ） */
   .paper::before {
@@ -869,6 +874,9 @@
     }
     .paper.is-month {
       background-position: 0 0;
+    }
+    .paper.is-day-flow {
+      background-position: 0 0, 0 calc(22px + env(safe-area-inset-top, 0px)), 0 0;
     }
     .leaf .face.back { border-radius: 0; }
     .page-date {
@@ -2622,6 +2630,7 @@
     el.innerHTML = '';
     var vType = viewParts(view).type;
     el.classList.toggle('is-month', vType === 'month' || vType === 'week');
+    el.classList.toggle('is-day-flow', vType === 'day');   // 「日付」区画がフローに入り本文の開始位置が22pxに変わった分、罫線もそこに合わせる
     var built = buildPageContent(view, interactive);
     el.appendChild(built.frag);
     if (built.iso) loadDayEvents(el, built.iso); // カレンダーの予定（キャッシュ即表示＋裏で更新）
