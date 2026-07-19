@@ -252,8 +252,11 @@
   .exam-countdown .ec-main { font-size: 14px; font-weight: 700; }
   .exam-countdown .ec-days { color: var(--sun); font-size: 18px; padding: 0 2px; }
   .exam-countdown .ec-passed { color: var(--sun); font-size: 13px; font-weight: 700; }
+  /* 「日付」区画が区画リスト内で描かれるとき（並び替え可能）は、他の区画と同じ通常フローに戻す */
+  .section-block .page-date { position: static; padding: 2px 18px 6px 56px; pointer-events: auto; }
+  .section-block .exam-countdown { position: static; padding: 0 16px 8px; pointer-events: auto; }
 
-  /* 本文エリア（計画＋日記の2区画）。罫線に行の高さを合わせる */
+  /* 本文エリア（区画を並べる列）。罫線に行の高さを合わせる */
   .page-body {
     position: absolute;
     top: 88px;
@@ -264,6 +267,9 @@
     flex-direction: column;
     padding-bottom: 14px;
   }
+  /* 日ページは「日付」も区画の1つとして並び替えられるため、上に固定の見出し帯を持たない
+     （週/月/メモは今も絶対配置のheadを別に持つのでこのクラスは付けない） */
+  .page-body.flowed-head { top: 22px; }
   .page-text {
     border: 0;
     background: transparent;
@@ -477,19 +483,6 @@
     white-space: nowrap;
     overflow: hidden;
     color: var(--divider-label);
-  }
-  /* 「予定」見出し（令和8年の行の左余白。タスク/日記のラベルと同じ体裁） */
-  .plan-gutter-label {
-    position: absolute;
-    left: 13px;
-    top: 63px;
-    max-width: 32px;
-    font-size: 8px;
-    letter-spacing: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    color: var(--divider-label);
-    pointer-events: none;
   }
   /* 日記の非表示（設定で切替。他人に予定を見せるとき日記を隠せる） */
   .page-body.diary-collapsed .sec-diary { display: none; }
@@ -884,12 +877,12 @@
     .exam-countdown {
       top: calc(2px + env(safe-area-inset-top, 0px));   /* Dynamic Island/ノッチの下から */
     }
-    .plan-gutter-label {
-      top: calc(63px + env(safe-area-inset-top, 0px));
-    }
     .page-body {
       top: calc(88px + env(safe-area-inset-top, 0px));
       padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+    .page-body.flowed-head {
+      top: calc(22px + env(safe-area-inset-top, 0px));
     }
     /* 道具はうすい紙タグとして紙の上に浮かせる */
     .toolbar {
@@ -2137,46 +2130,19 @@
       var holiday = HOLIDAYS[iso] || '';
       var rokuyo = getRokuyoEnabled() ? rokuyoOf(iso) : '';
 
-      // 「日付」区画: 設定で足していなければ表示しない（試験日カウントダウンも同じ区画扱い）
-      if (hasSection('date')) {
-        head.innerHTML =
-          '<span class="big' + (holiday ? ' is-holiday' : '') + '">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
-          '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span></span>' +
-          '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() +
-          (holiday ? '<span class="holiday-name">' + holiday + '</span>' : '') +
-          (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
-          '</span>';
-        frag.appendChild(head);
-
-        // 試験日カウントダウン（計画表と共有。この日から試験日までの残り日数）
-        var ecHtml = examCountdownHTML(iso);
-        if (ecHtml) {
-          var ec = document.createElement('div');
-          ec.className = 'exam-countdown';
-          ec.innerHTML = ecHtml;
-          frag.appendChild(ec);
-        }
-      }
-
-      // 本文: 足した区画を、足した並び順（↑↓で入れ替え可）どおりに描く。
+      // 本文: 足した区画（「日付」も含む）を、足した並び順（↑↓で入れ替え可）どおりに描く。
       // 半幅の区画が隣り合うと2段組（新聞風）になる
       var body = document.createElement('div');
-      body.className = 'page-body';
+      body.className = 'page-body flowed-head';
 
       // 1区画ぶんの中身をブロック（wrapper）として組み立てる
-      function buildSectionBlock(sec, isFirst) {
+      function buildSectionBlock(sec) {
         var block = document.createElement('div');
         block.className = 'section-block' + (sec === 'diary' ? ' sec-diary' : '');
         var kind = sectionKind(sec);
 
-        // 見出し。予定が先頭・全幅のときだけ、従来どおり左余白のラベル（罫線の区切りなし）
-        var planClassic = (sec === 'plan' && isFirst);
-        if (planClassic) {
-          var planLabel = document.createElement('div');
-          planLabel.className = 'plan-gutter-label';
-          planLabel.textContent = tx('planLabel');
-          frag.appendChild(planLabel);
-        } else {
+        // 「日付」は大きな数字が主役なので、他の区画のような罫線+ラベルの見出し帯は付けない
+        if (sec !== 'date') {
           var divider = document.createElement('div');
           divider.className = 'page-divider' + (sec === 'study' ? ' study-divider' : '');
           var dLabel = document.createElement('span');
@@ -2186,7 +2152,27 @@
           block.appendChild(divider);
         }
 
-        if (sec === 'plan') {
+        if (sec === 'date') {
+          var dateEl = document.createElement('div');
+          dateEl.className = 'page-date';
+          dateEl.innerHTML =
+            '<span class="big' + (holiday ? ' is-holiday' : '') + '">' + (d.getMonth() + 1) + '月' + d.getDate() + '日' +
+            '<span class="' + (holiday ? 'dow-sun' : dowClass(d)) + '">（' + DOW[d.getDay()] + '）</span></span>' +
+            '<span class="small">' + warekiOf(d) + ' ' + d.getFullYear() +
+            (holiday ? '<span class="holiday-name">' + holiday + '</span>' : '') +
+            (rokuyo ? '<span class="rokuyo-name">' + rokuyo + '</span>' : '') +
+            '</span>';
+          block.appendChild(dateEl);
+
+          // 試験日カウントダウン（計画表と共有。この日から試験日までの残り日数）
+          var ecHtml = examCountdownHTML(iso);
+          if (ecHtml) {
+            var ec = document.createElement('div');
+            ec.className = 'exam-countdown';
+            ec.innerHTML = ecHtml;
+            block.appendChild(ec);
+          }
+        } else if (sec === 'plan') {
           // カレンダーの予定。中身はrenderPage後にloadDayEventsが入れる。
           // タップでエディタが開く（予定の行以外＝空きスペースをタップ＝新規追加）
           var planArea = document.createElement('div');
@@ -2241,12 +2227,12 @@
         return block;
       }
 
-      var secs = getSections().filter(function (s) { return s !== 'date'; });
+      var secs = getSections();
       var lastSec = secs[secs.length - 1];
       var pendingRow = null;   // 半幅を左右に並べる作りかけの段
-      secs.forEach(function (sec, idx) {
+      secs.forEach(function (sec) {
         var half = sectionCanHalf(sec) && sectionWidth(sec) === 'half';
-        var block = buildSectionBlock(sec, idx === 0);
+        var block = buildSectionBlock(sec);
         if (half) {
           block.classList.add('half');
           if (pendingRow && pendingRow.children.length === 1) {
