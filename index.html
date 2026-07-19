@@ -313,6 +313,93 @@
   .section-row .section-block + .section-block .study-mark { left: 7px; }
   .section-row .section-block + .section-block .page-text { padding: 0 8px 0 14px; }
   .section-row .section-block + .section-block .page-divider .label { left: 8px; max-width: none; }
+
+  /* ---- 区画の編集モード（日のページを長押し。iPhoneのホーム画面の編集に寄せた操作感） ---- */
+  /* 編集中は半幅の2段組をやめ、ドラッグで並び替えられる1列のリストで組み直して描く（buildEditableBody） */
+  .page-body.editing { position: relative; }
+  .section-block.edit-item { width: auto; padding-left: 34px; }
+  /* 本文はドラッグ中に触れないようにする（バッジだけ操作できる） */
+  .page-body.editing .section-block.edit-item > *:not(.edit-badge) { pointer-events: none; }
+  @keyframes secJiggle {
+    0%, 100% { transform: rotate(-0.5deg); }
+    50% { transform: rotate(0.5deg); }
+  }
+  .page-body.editing .section-block.edit-item {
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    animation: secJiggle 0.28s ease-in-out infinite;
+    border: 1px dashed rgba(120, 100, 60, 0.3);
+    border-radius: 8px;
+    margin-bottom: 4px;
+  }
+  .page-body.editing .section-block.edit-item.dragging {
+    animation: none;
+    cursor: grabbing;
+    z-index: 40;
+    background: var(--paper);
+    box-shadow: 0 8px 18px rgba(40, 30, 15, 0.28);
+    border-color: rgba(120, 100, 60, 0.5);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .page-body.editing .section-block.edit-item { animation: none; }
+  }
+  .edit-badge {
+    display: none;
+    position: absolute;
+    z-index: 2;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .page-body.editing .edit-badge { display: block; pointer-events: auto; }
+  .edit-badge-rm {
+    top: 4px;
+    left: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: #c4645c;
+    color: #fff;
+    font-size: 16px;
+    line-height: 24px;
+    padding: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  .edit-badge-w {
+    top: 4px;
+    right: 4px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    background: #f8f3e6;
+    color: #4a4030;
+    font-size: 11px;
+  }
+  .edit-add-tile, .empty-add-tile {
+    width: 100%;
+    padding: 14px 16px;
+    margin-top: 4px;
+    border: 1.5px dashed rgba(120, 100, 60, 0.4);
+    border-radius: 8px;
+    background: transparent;
+    color: #8a7d5a;
+    font-family: inherit;
+    font-size: 14px;
+    text-align: center;
+    cursor: pointer;
+  }
+  /* 追加タイルは編集中だけ（＝長押しで入る）。何も無い日だけ例外で常時タップできる(.empty-add-tile) */
+  .edit-add-tile { display: none; }
+  .page-body.editing .edit-add-tile { display: block; }
+  .edit-add-picker { margin-top: 8px; }
+  .edit-hint {
+    text-align: center;
+    font-size: 11px;
+    color: #8a8d99;
+    margin-top: 10px;
+  }
   .page-text.memo {
     white-space: pre-wrap;
     word-break: break-word;
@@ -1054,6 +1141,18 @@
     white-space: nowrap;
   }
   .sec-row .sec-name .sec-kind { font-size: 10px; color: #8a8d99; margin-left: 4px; }
+  .sec-name-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 14px;
+    color: #4a4e5c;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(120, 100, 60, 0.25);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .sec-row .sec-kind { flex: none; font-size: 10px; color: #8a8d99; }
   .sec-btn {
     flex: none;
     width: 34px;
@@ -1409,6 +1508,7 @@
 
 <!-- 右上のメニュー（☰）と設定 -->
 <button id="menuBtn" type="button" class="menu-btn" aria-label="メニュー">☰</button>
+<button id="editDoneBtn" type="button" class="menu-btn" style="display:none; width:auto; padding:0 14px; font-size:14px; font-weight:600;">完了</button>
 <div id="menuPanel" class="menu-panel" style="display:none;">
   <button id="menuSettings" type="button">⚙ 設定</button>
   <button id="menuPrivacy" type="button">プライバシーポリシー</button>
@@ -1416,11 +1516,10 @@
 <div id="settingsModal" class="settings-modal" style="display:none;">
   <div class="settings-card">
     <h2>設定</h2>
-    <p class="settings-label" style="margin-top:0;">手帳の区画</p>
-    <p class="settings-note" style="margin-top:0;">必要な区画だけ足して、↑↓で並べ替え。「半幅」にした区画が隣り合うと、新聞のような2段組になります。名前をつけた自分だけの区画も作れます。</p>
+    <p class="settings-label" style="margin-top:0;">自分の区画</p>
+    <p class="settings-note" style="margin-top:0;">名前をつけた自分だけの区画（自由記入 or チェックリスト）をここで作ります。ページに足す・並べ替える・幅を変えるのは、日のページの区画を長押しすると編集できます。</p>
     <div id="sectionChips"></div>
-    <button id="sectionAddBtn" type="button" class="settings-close" style="margin-top:8px; width:auto; padding:8px 14px;">＋ 区画を追加</button>
-    <div id="sectionAddMenu" style="display:none; margin-top:8px;"></div>
+    <div id="sectionAddMenu" style="margin-top:8px;"></div>
     <p class="settings-label" style="margin-top:16px;">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
@@ -1563,6 +1662,7 @@
   var currentISO = toISO(new Date());
   // ビューは 'day:YYYY-MM-DD'（日のページ）'week:YYYY-MM-DD'（週の見開き・その週の始まりの日）'month:YYYY-MM'（月のカレンダー）
   var currentView = 'day:' + currentISO;
+  var editingSections = false;   // 区画の編集モード（日のページを長押しで入る。iPhoneのホーム画面編集に相当）
 
   // 試験日カウントダウン（設定は手帳/計画表どちらでも。同一オリジンでlocalStorage共有）
   function examDate() { return localStorage.getItem('pt:examDate') || localStorage.getItem('pk:examDate') || ''; }
@@ -1746,14 +1846,10 @@
     var arr = getSections();
     if (arr.indexOf(id) === -1) { arr.push(id); setSections(arr); }
   }
+  // ページから外すだけ（ホーム画面からウィジェットを外してもアプリ自体は消えないのと同じ）。
+  // 自由区画の「定義」を消すのは設定のdeleteCustomSectionDefだけの役目
   function removeSection(id) {
     setSections(getSections().filter(function (x) { return x !== id; }));
-    if (id.slice(0, 2) === 'c:') {
-      var defs = customDefs();
-      delete defs[id.slice(2)];
-      setCustomDefs(defs);
-      // 各日の書き込み（pt:ISO:c:… / pt:ISO:cl:…）は消さずに残す（誤削除しても復元の余地を残す）
-    }
     var opts = sectionOpts();
     if (opts[id]) { delete opts[id]; setSectionOpts(opts); }
   }
@@ -1766,12 +1862,27 @@
     arr[j] = id;
     setSections(arr);
   }
-  function addCustomSection(name, kind) {
+  // 自分の区画の定義だけを作る（設定の役目。ページに足すのは日のページの長押し編集から）
+  function createCustomSection(name, kind) {
     var id = 'x' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
     var defs = customDefs();
     defs[id] = { n: name, k: kind };
     setCustomDefs(defs);
-    addSection('c:' + id);
+    return 'c:' + id;
+  }
+  function renameCustomSection(id, name) {
+    var defs = customDefs();
+    var shortId = id.slice(2);
+    if (!defs[shortId]) return;
+    defs[shortId].n = name;
+    setCustomDefs(defs);
+  }
+  // 定義そのものを削除（設定の役目）。ページからも外し、各日の書き込みはあえて残す（誤操作の復元余地）
+  function deleteCustomSectionDef(id) {
+    removeSection(id);
+    var defs = customDefs();
+    delete defs[id.slice(2)];
+    setCustomDefs(defs);
   }
   function sectionOpts() {
     try {
@@ -2236,42 +2347,98 @@
       }
 
       var secs = getSections();
-      var lastSec = secs[secs.length - 1];
-      var pendingRow = null;   // 半幅を左右に並べる作りかけの段
-      secs.forEach(function (sec) {
-        var half = sectionCanHalf(sec) && sectionWidth(sec) === 'half';
-        var block = buildSectionBlock(sec);
-        if (half) {
-          block.classList.add('half');
-          if (pendingRow && pendingRow.children.length === 1) {
-            pendingRow.appendChild(block);
-            pendingRow = null;
-          } else {
-            pendingRow = document.createElement('div');
-            pendingRow.className = 'section-row';
-            pendingRow.appendChild(block);
-            body.appendChild(pendingRow);
+
+      if (interactive && editingSections) {
+        // 編集モード: 半幅の2段組はやめて1列に並べ、長押し中と同じ「ホーム画面編集」の操作感で
+        // ドラッグ並び替え・−で外す・全幅/半幅の切替・＋で追加ができる
+        body.classList.add('editing');
+        secs.forEach(function (sec) {
+          var block = buildSectionBlock(sec);
+          block.classList.add('edit-item');
+          block.dataset.sec = sec;
+
+          var rm = document.createElement('button');
+          rm.type = 'button'; rm.className = 'edit-badge edit-badge-rm'; rm.textContent = '−';
+          rm.setAttribute('aria-label', sectionLabel(sec) + 'を外す');
+          rm.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+          rm.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            removeSection(sec);
+            refreshCurrentPage();
+          });
+          block.appendChild(rm);
+
+          if (sectionCanHalf(sec)) {
+            var wb = document.createElement('button');
+            wb.type = 'button'; wb.className = 'edit-badge edit-badge-w';
+            wb.textContent = sectionWidth(sec) === 'half' ? '半幅' : '全幅';
+            wb.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+            wb.addEventListener('click', function (ev) {
+              ev.stopPropagation();
+              setSectionWidth(sec, sectionWidth(sec) === 'half' ? 'full' : 'half');
+              refreshCurrentPage();
+            });
+            block.appendChild(wb);
           }
-        } else {
-          pendingRow = null;
-          // 最後の全幅テキスト区画（日記/自由記入）は紙の残り全部に伸ばす
-          if (sec === lastSec && (sec === 'diary' || sectionKind(sec) === 'text') && sec !== 'plan' && sec !== 'study' && sectionKind(sec) !== 'check') {
-            block.classList.add('grow');
-          }
+
+          attachSectionDrag(block, body);
           body.appendChild(block);
-        }
-      });
+        });
+
+        var addTile = document.createElement('button');
+        addTile.type = 'button';
+        addTile.className = 'edit-add-tile';
+        addTile.textContent = '＋ 区画を追加';
+        addTile.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        addTile.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          toggleSectionAddPicker(body, addTile);
+        });
+        body.appendChild(addTile);
+
+        var hint = document.createElement('div');
+        hint.className = 'edit-hint';
+        hint.textContent = 'ドラッグで並び替え。空いたところをタップすると編集を終わります。';
+        body.appendChild(hint);
+      } else if (secs.length === 0) {
+        // 何も足していない日は、タップで編集モードに入れる案内タイルを出す
+        var emptyTile = document.createElement('button');
+        emptyTile.type = 'button';
+        emptyTile.className = 'empty-add-tile';
+        emptyTile.textContent = '＋ 区画を追加';
+        if (interactive) emptyTile.addEventListener('click', function () { enterEditMode(); });
+        body.appendChild(emptyTile);
+      } else {
+        var lastSec = secs[secs.length - 1];
+        var pendingRow = null;   // 半幅を左右に並べる作りかけの段
+        secs.forEach(function (sec) {
+          var half = sectionCanHalf(sec) && sectionWidth(sec) === 'half';
+          var block = buildSectionBlock(sec);
+          if (half) {
+            block.classList.add('half');
+            if (pendingRow && pendingRow.children.length === 1) {
+              pendingRow.appendChild(block);
+              pendingRow = null;
+            } else {
+              pendingRow = document.createElement('div');
+              pendingRow.className = 'section-row';
+              pendingRow.appendChild(block);
+              body.appendChild(pendingRow);
+            }
+          } else {
+            pendingRow = null;
+            // 最後の全幅テキスト区画（日記/自由記入）は紙の残り全部に伸ばす
+            if (sec === lastSec && (sec === 'diary' || sectionKind(sec) === 'text') && sec !== 'plan' && sec !== 'study' && sectionKind(sec) !== 'check') {
+              block.classList.add('grow');
+            }
+            body.appendChild(block);
+          }
+        });
+      }
 
       // 日記の表示/非表示は設定「日記を非表示」で切り替える（予定を見せるとき隠せる）
       if (hasSection('diary')) body.classList.toggle('diary-collapsed', getDiaryHidden());
 
-      // 何も足していない日は、設定への導線を1行だけ出す
-      if (secs.length === 0) {
-        var noSection = document.createElement('div');
-        noSection.className = 'plan-empty';
-        noSection.textContent = '設定の「手帳の区画」から、書きたいものを足せます。';
-        body.appendChild(noSection);
-      }
       frag.appendChild(body);
     } else if (v.type === 'week') {
       var wStart = fromISO(v.iso);
@@ -2661,6 +2828,145 @@
     if (type === 'month') requestAnimationFrame(function () { fitMonthCells(); });
   }
 
+  function refreshCurrentPage() { renderPage(document.getElementById('currentPage'), currentView, true); }
+
+  // ---- 区画の編集モード（日のページの区画を長押しすると、iPhoneのホーム画面のように
+  //      ドラッグで並び替え・−で外す・全幅/半幅の切替・＋で追加ができる） ----
+  function enterEditMode() {
+    if (editingSections || viewParts(currentView).type !== 'day') return;
+    finishReplayNow();   // おさらい再生中なら即完了させてから編集へ
+    editingSections = true;
+    refreshCurrentPage();
+    updateEditChrome();
+  }
+  function exitEditMode() {
+    if (!editingSections) return;
+    editingSections = false;
+    refreshCurrentPage();
+    updateEditChrome();
+  }
+  function updateEditChrome() {
+    var doneBtn = document.getElementById('editDoneBtn');
+    var menuBtn = document.getElementById('menuBtn');
+    if (doneBtn) doneBtn.style.display = editingSections ? '' : 'none';
+    if (menuBtn) menuBtn.style.display = editingSections ? 'none' : '';
+  }
+  document.getElementById('editDoneBtn').addEventListener('click', exitEditMode);
+
+  // 区画の長押し検出（1本の指で500ms動かさず押し続けたら編集モードへ）。
+  // どの区画も無い日は空のタイル(.empty-add-tile)を直接タップで入れる（長押し不要）
+  (function () {
+    var lpTimer = null, lpX = null, lpY = null;
+    function cancel() { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } }
+    document.addEventListener('pointerdown', function (ev) {
+      if (editingSections) return;
+      if (!ev.target.closest('.page-body .section-block')) return;
+      if (viewParts(currentView).type !== 'day') return;
+      lpX = ev.clientX; lpY = ev.clientY;
+      lpTimer = setTimeout(function () { cancel(); enterEditMode(); }, 500);
+    });
+    document.addEventListener('pointermove', function (ev) {
+      if (!lpTimer) return;
+      if (Math.abs(ev.clientX - lpX) > 8 || Math.abs(ev.clientY - lpY) > 8) cancel();
+    });
+    document.addEventListener('pointerup', cancel);
+    document.addEventListener('pointercancel', cancel);
+    // 編集中に区画・追加タイル以外（紙の空いたところ）をタップしたら編集を終える
+    document.addEventListener('pointerdown', function (ev) {
+      if (!editingSections) return;
+      if (ev.target.closest('.section-block, .edit-add-tile, .edit-add-picker, #editDoneBtn')) return;
+      if (!ev.target.closest('.page-body')) return;
+      exitEditMode();
+    });
+  })();
+
+  // 区画の追加ピッカー（日のページの「＋ 区画を追加」タイル）。既存の未使用の組み込み区画と
+  // 自分の区画（設定で作成済みのもの）をチップで並べ、タップでその場に足す
+  function toggleSectionAddPicker(body, addTile) {
+    var existing = body.querySelector('.edit-add-picker');
+    if (existing) { existing.remove(); return; }
+    var active = getSections();
+    var candidates = SECTION_IDS.concat(Object.keys(customDefs()).map(function (id) { return 'c:' + id; }))
+      .filter(function (id) { return active.indexOf(id) === -1; });
+    var picker = document.createElement('div');
+    picker.className = 'edit-add-picker week-chips';
+    if (candidates.length === 0) {
+      var note = document.createElement('div');
+      note.className = 'edit-hint';
+      note.textContent = '足せる区画がありません。設定の「自分の区画」から新しく作れます。';
+      picker.appendChild(note);
+    }
+    candidates.forEach(function (id) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
+      b.textContent = '＋ ' + sectionLabel(id);
+      b.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        addSection(id);
+        refreshCurrentPage();
+      });
+      picker.appendChild(b);
+    });
+    body.insertBefore(picker, addTile.nextSibling);
+  }
+
+  // 区画のドラッグ並び替え（指の動きに追従→離した位置で挿入先を決める。
+  // 他の区画のライブシフトはせず、ドロップ時に一括で並べ替える簡易版）
+  function attachSectionDrag(block, container) {
+    var startY = null, dragging = false, others = [];
+    function onMove(ev) {
+      var dy = ev.clientY - startY;
+      if (!dragging) {
+        if (Math.abs(dy) < 6) return;
+        dragging = true;
+        block.classList.add('dragging');
+        others = Array.prototype.filter.call(
+          container.querySelectorAll('.section-block.edit-item[data-sec]'),
+          function (c) { return c !== block; }
+        );
+        try { block.setPointerCapture(ev.pointerId); } catch (e) {}
+      }
+      block.style.transform = 'translateY(' + dy + 'px)';
+      ev.preventDefault();
+    }
+    function onUp(ev) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      if (!dragging) { startY = null; return; }
+      block.classList.remove('dragging');
+      block.style.transform = '';
+      var dropY = ev.clientY;
+      var target = null, before = true;
+      for (var i = 0; i < others.length; i++) {
+        var r = others[i].getBoundingClientRect();
+        if (dropY < r.top + r.height / 2) { target = others[i]; before = true; break; }
+      }
+      if (!target && others.length) { target = others[others.length - 1]; before = false; }
+      if (target) {
+        var parent = target.parentNode;
+        parent.insertBefore(block, before ? target : target.nextSibling);
+      }
+      var order = Array.prototype.map.call(
+        container.querySelectorAll('.section-block.edit-item[data-sec]'),
+        function (c) { return c.dataset.sec; }
+      );
+      setSections(order);
+      startY = null;
+      dragging = false;
+    }
+    block.addEventListener('pointerdown', function (ev) {
+      if (ev.target.closest('.edit-badge')) return;
+      startY = ev.clientY;
+      dragging = false;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+    });
+  }
+
   // ---- ページめくり ----
   // 指の動きに1:1で追従する（進む=0°→-178°、戻る=-178°→0°）。
   // 離したとき、進み具合としきい値・勢い（フリック）でめくり切るか元に戻すか決める
@@ -3036,6 +3342,7 @@
   // ボタン・タブからの切り替え（一気に。めくりのしなりはCSSアニメで）
   function flipTo(nextView, dir) {
     if (!readyForFlip() || nextView === currentView) return;
+    if (editingSections) { editingSections = false; updateEditChrome(); }   // ページを動かしたら区画の編集は終わる
     flipping = true;
     var t = prepareLeaf(dir, nextView);
     if (t.mode === 'flip') {
@@ -4142,90 +4449,59 @@
       });
     }
 
-    // 手帳の区画。＋で足し、↑↓で並べ替え、全幅/半幅を切り替え、×で外す。
-    // 「自分の区画」（名前+自由記入orチェックリスト）もここで作る
+    // 自分の区画。設定でできるのは「定義」の作成・名前変更・削除だけ。
+    // ページに足す・並べ替える・幅を変えるのは日のページを長押しして編集する（main画面側）
     var sectionChips = document.getElementById('sectionChips');
-    var sectionAddBtn = document.getElementById('sectionAddBtn');
     var sectionAddMenu = document.getElementById('sectionAddMenu');
-    function secChanged() {
-      renderSectionChips();
-      refreshCurrentPage();
-      flashSaved();
-    }
     function renderSectionChips() {
-      sectionAddMenu.style.display = 'none';
       sectionChips.innerHTML = '';
-      var active = getSections();
-      if (active.length === 0) {
+      var defs = customDefs();
+      var ids = Object.keys(defs);
+      if (ids.length === 0) {
         var note = document.createElement('div');
         note.className = 'settings-note';
         note.style.marginTop = '0';
-        note.textContent = 'まだ何も足していません。';
+        note.textContent = 'まだ自分の区画はありません。下で作れます。';
         sectionChips.appendChild(note);
       }
-      active.forEach(function (id, i) {
+      ids.forEach(function (shortId) {
+        var def = defs[shortId];
         var row = document.createElement('div');
         row.className = 'sec-row';
 
-        var up = document.createElement('button');
-        up.type = 'button'; up.className = 'sec-btn'; up.textContent = '↑';
-        up.disabled = i === 0;
-        up.addEventListener('click', function () { moveSection(id, -1); secChanged(); });
-        row.appendChild(up);
+        var nameInp = document.createElement('input');
+        nameInp.type = 'text';
+        nameInp.className = 'sec-name-input';
+        nameInp.value = def.n;
+        nameInp.maxLength = 12;
+        nameInp.addEventListener('change', function () {
+          var v = (nameInp.value || '').trim();
+          if (!v) { nameInp.value = def.n; return; }
+          renameCustomSection('c:' + shortId, v);
+          flashSaved();
+        });
+        row.appendChild(nameInp);
 
-        var down = document.createElement('button');
-        down.type = 'button'; down.className = 'sec-btn'; down.textContent = '↓';
-        down.disabled = i === active.length - 1;
-        down.addEventListener('click', function () { moveSection(id, 1); secChanged(); });
-        row.appendChild(down);
-
-        var name = document.createElement('span');
-        name.className = 'sec-name';
-        name.textContent = sectionLabel(id);
-        if (id.slice(0, 2) === 'c:') {
-          var kindEl = document.createElement('span');
-          kindEl.className = 'sec-kind';
-          kindEl.textContent = sectionKind(id) === 'check' ? 'チェックリスト' : '自由記入';
-          name.appendChild(kindEl);
-        }
-        row.appendChild(name);
-
-        if (sectionCanHalf(id)) {
-          var wBtn = document.createElement('button');
-          wBtn.type = 'button'; wBtn.className = 'sec-btn wide';
-          wBtn.textContent = sectionWidth(id) === 'half' ? '半幅' : '全幅';
-          wBtn.addEventListener('click', function () {
-            setSectionWidth(id, sectionWidth(id) === 'half' ? 'full' : 'half');
-            secChanged();
-          });
-          row.appendChild(wBtn);
-        }
+        var kindEl = document.createElement('span');
+        kindEl.className = 'sec-kind';
+        kindEl.textContent = def.k === 'check' ? 'チェックリスト' : '自由記入';
+        row.appendChild(kindEl);
 
         var del = document.createElement('button');
         del.type = 'button'; del.className = 'sec-btn danger'; del.textContent = '×';
-        del.addEventListener('click', function () { removeSection(id); secChanged(); });
+        del.addEventListener('click', function () {
+          deleteCustomSectionDef('c:' + shortId);
+          renderSectionChips();
+          refreshCurrentPage();
+          flashSaved();
+        });
         row.appendChild(del);
 
         sectionChips.appendChild(row);
       });
-      renderSectionAddMenu();
     }
     function renderSectionAddMenu() {
-      var active = getSections();
-      var rest = SECTION_IDS.filter(function (id) { return active.indexOf(id) === -1; });
       sectionAddMenu.innerHTML = '';
-      var chipsWrap = document.createElement('div');
-      chipsWrap.className = 'week-chips';
-      rest.forEach(function (id) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.style.cssText = 'width:auto; padding:0 16px; border-radius:20px;';
-        b.textContent = '＋ ' + sectionLabel(id);
-        b.addEventListener('click', function () { addSection(id); secChanged(); });
-        chipsWrap.appendChild(b);
-      });
-      if (rest.length) sectionAddMenu.appendChild(chipsWrap);
-
       // 自分の区画を作るフォーム（名前＋種類）
       var form = document.createElement('div');
       form.className = 'sec-new-form';
@@ -4266,15 +4542,15 @@
       mk.addEventListener('click', function () {
         var n = (nameInp.value || '').trim();
         if (!n) { nameInp.focus(); return; }
-        addCustomSection(n, kind);
-        secChanged();
+        createCustomSection(n, kind);
+        nameInp.value = '';
+        renderSectionChips();
+        flashSaved();
       });
       form.appendChild(mk);
       sectionAddMenu.appendChild(form);
     }
-    sectionAddBtn.addEventListener('click', function () {
-      sectionAddMenu.style.display = sectionAddMenu.style.display === 'none' ? 'block' : 'none';
-    });
+    renderSectionAddMenu();
 
     // つかいかたの統計トグル
     var statsToggle = document.getElementById('statsToggle');
@@ -4351,7 +4627,6 @@
       modal.style.display = 'flex';
     });
     // 試験日カウントダウンの設定（pt:に保存。計画表のpk:も表示側では読む）
-    function refreshCurrentPage() { renderPage(document.getElementById('currentPage'), currentView, true); }
     document.getElementById('examDateInput').addEventListener('change', function () {
       var v = this.value;
       if (v) localStorage.setItem('pt:examDate', v); else localStorage.removeItem('pt:examDate');
