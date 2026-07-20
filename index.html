@@ -299,8 +299,7 @@
   .section-block.grow { flex: 1 1 auto; min-height: 0; }
   .section-block.grow .page-text { flex: 1 1 auto; min-height: 0; }
   /* それ以外のテキスト区画は6行ぶん（罫線28pxに整合）で固定＋中でスクロール */
-  .section-block:not(.grow) .page-text.diary,
-  .section-block:not(.grow) .page-text.custom-text { height: 168px; }
+  .section-block:not(.grow) .page-text.diary { height: 168px; }
   /* 半幅の段（新聞風の2段組）。左右のブロックの間に細い罫線。
      左の段は紙の赤線・綴じ糸をそのまま使う（書き出し位置は全幅と同じ）。
      右の段には赤線が無いので、書き出しを段の左端近くまで詰める */
@@ -1159,40 +1158,6 @@
     color: #8a8d99;
     margin-top: 10px;
   }
-  /* 手帳の区画: 1区画=1行（↑↓で並べ替え・全幅/半幅・×で外す） */
-  .sec-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 0;
-    border-bottom: 1px dashed rgba(120, 100, 60, 0.22);
-  }
-  .sec-name-input {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-family: inherit;
-    font-size: 14px;
-    color: #4a4e5c;
-    background: rgba(255, 255, 255, 0.5);
-    border: 1px solid rgba(120, 100, 60, 0.25);
-    border-radius: 6px;
-    padding: 6px 8px;
-  }
-  .sec-row .sec-kind { flex: none; font-size: 10px; color: #8a8d99; }
-  .sec-btn {
-    flex: none;
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid rgba(120, 100, 60, 0.3);
-    background: rgba(255, 255, 255, 0.5);
-    font-family: inherit;
-    font-size: 14px;
-    color: #4a4e5c;
-    cursor: pointer;
-  }
-  .sec-btn.danger { color: #c4645c; }
-  .sec-new-form { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(120, 100, 60, 0.2); }
   /* 計画表と連携（コード） */
   .link-code-row { display: flex; align-items: center; gap: 8px; }
   .link-code {
@@ -1615,11 +1580,7 @@
   <div class="settings-card">
     <button id="settingsCloseX" type="button" class="card-close-x" aria-label="とじる">×</button>
     <h2>設定</h2>
-    <p class="settings-label" style="margin-top:0;">自分の区画</p>
-    <p class="settings-note" style="margin-top:0;">名前をつけた自分だけの区画（自由記入 or チェックリスト）をここで作ります。ページに足す・並べ替える・幅を変えるのは、日のページの区画を長押しすると編集できます。</p>
-    <div id="sectionChips"></div>
-    <div id="sectionAddMenu" style="margin-top:8px;"></div>
-    <p class="settings-label" style="margin-top:16px;">週の始まり</p>
+    <p class="settings-label" style="margin-top:0;">週の始まり</p>
     <div id="weekStartChips" class="week-chips"></div>
     <p class="settings-note">月のカレンダーの並びが変わります。</p>
     <p class="settings-label" style="margin-top:16px;">試験日カウントダウン</p>
@@ -1922,33 +1883,20 @@
     return s;
   }
 
-  // 手帳の区画。既定はすべて外れていて、設定の「＋ 区画を追加」で自分の手帳を組み立てる。
-  // 組み込み5種（日付/予定/勉強/タスク/日記）に加えて、自分で名前をつけた自由区画
-  // （自由記入 or チェックリスト）を作れる。並び順=pt:sectionsの配列順（↑↓で入れ替え可）。
+  // 手帳の区画。既定はすべて外れていて、日のページを長押しして自分の手帳を組み立てる。
+  // 組み込み5種（日付/予定/勉強/タスク/日記）。並び順=pt:sectionsの配列順。
   // 幅は全幅/半幅が選べ、半幅が隣り合うと新聞のような2段組になる。
-  //   pt:sections        = ['date','plan','c:xxxx',...]（自由区画は 'c:'+id）
-  //   pt:customSections  = { id: {n:名前, k:'text'|'check'} }
+  //   pt:sections        = ['date','plan',...]
   //   pt:sectionOpts     = { 区画キー: {w:'half'} }（省略時は全幅）
+  // 2026-07-20、自由記入/チェックリストの「自分の区画」機能は廃止した（ユーザー決定）。
+  // 過去に作っていた場合、定義（pt:customSections）と書き込み内容は端末に残るが、
+  // getSectionsがSECTION_IDS以外を素通りしなくなったため画面には出てこない。
   var SECTION_IDS = ['date', 'plan', 'study', 'todo', 'diary'];
-  function customDefs() {
-    try {
-      var o = JSON.parse(localStorage.getItem('pt:customSections'));
-      return (o && typeof o === 'object') ? o : {};
-    } catch (e) { return {}; }
-  }
-  function setCustomDefs(o) {
-    if (Object.keys(o).length) localStorage.setItem('pt:customSections', JSON.stringify(o));
-    else localStorage.removeItem('pt:customSections');
-  }
   function getSections() {
     try {
       var arr = JSON.parse(localStorage.getItem('pt:sections'));
       if (!Array.isArray(arr)) return [];
-      var defs = customDefs();
-      return arr.filter(function (id) {
-        if (SECTION_IDS.indexOf(id) !== -1) return true;
-        return id.slice(0, 2) === 'c:' && !!defs[id.slice(2)];
-      });
+      return arr.filter(function (id) { return SECTION_IDS.indexOf(id) !== -1; });
     } catch (e) { return []; }
   }
   function setSections(arr) { localStorage.setItem('pt:sections', JSON.stringify(arr)); }
@@ -1957,8 +1905,7 @@
     var arr = getSections();
     if (arr.indexOf(id) === -1) { arr.push(id); setSections(arr); }
   }
-  // ページから外すだけ（ホーム画面からウィジェットを外してもアプリ自体は消えないのと同じ）。
-  // 自由区画の「定義」を消すのは設定のdeleteCustomSectionDefだけの役目
+  // ページから外すだけ（ホーム画面からウィジェットを外してもアプリ自体は消えないのと同じ）
   function removeSection(id) {
     setSections(getSections().filter(function (x) { return x !== id; }));
     var opts = sectionOpts();
@@ -1972,28 +1919,6 @@
     arr[i] = arr[j];
     arr[j] = id;
     setSections(arr);
-  }
-  // 自分の区画の定義だけを作る（設定の役目。ページに足すのは日のページの長押し編集から）
-  function createCustomSection(name, kind) {
-    var id = 'x' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
-    var defs = customDefs();
-    defs[id] = { n: name, k: kind };
-    setCustomDefs(defs);
-    return 'c:' + id;
-  }
-  function renameCustomSection(id, name) {
-    var defs = customDefs();
-    var shortId = id.slice(2);
-    if (!defs[shortId]) return;
-    defs[shortId].n = name;
-    setCustomDefs(defs);
-  }
-  // 定義そのものを削除（設定の役目）。ページからも外し、各日の書き込みはあえて残す（誤操作の復元余地）
-  function deleteCustomSectionDef(id) {
-    removeSection(id);
-    var defs = customDefs();
-    delete defs[id.slice(2)];
-    setCustomDefs(defs);
   }
   function sectionOpts() {
     try {
@@ -2018,19 +1943,8 @@
   // 日付は帯なので幅の概念なし。予定はラベル・行の作りが全幅前提なので全幅固定
   function sectionCanHalf(id) { return id !== 'date' && id !== 'plan'; }
   function sectionLabel(id) {
-    if (id.slice(0, 2) === 'c:') {
-      var def = customDefs()[id.slice(2)];
-      return def ? def.n : id;
-    }
     var key = { date: 'dateLabel', plan: 'planLabel', study: 'studyLabel', todo: 'todoLabel', diary: 'diaryLabel' }[id];
     return key ? tx(key) : id;
-  }
-  function sectionKind(id) {
-    if (id.slice(0, 2) === 'c:') {
-      var def = customDefs()[id.slice(2)];
-      return def && def.k === 'check' ? 'check' : 'text';
-    }
-    return id;
   }
 
   // 常に表示され得る静的DOMの文言をことばづかいに合わせて更新する
@@ -2538,7 +2452,6 @@
       function buildSectionBlock(sec) {
         var block = document.createElement('div');
         block.className = 'section-block' + (sec === 'diary' ? ' sec-diary' : '');
-        var kind = sectionKind(sec);
 
         // 「日付」は大きな数字が主役なので、他の区画のような罫線+ラベルの見出し帯は付けない
         if (sec !== 'date') {
@@ -2589,32 +2502,24 @@
           studyArea.className = 'study-area';
           block.appendChild(studyArea);
           buildStudy(studyArea, block.firstChild, iso, interactive);
-        } else if (sec === 'todo' || kind === 'check') {
+        } else if (sec === 'todo') {
           var todoArea = document.createElement('div');
           todoArea.className = 'todo-area';
           block.appendChild(todoArea);
-          if (interactive) {
-            if (sec === 'todo') buildTodos(todoArea, iso);
-            else {
-              var clKey = 'pt:' + iso + ':cl:' + sec.slice(2);
-              buildChecklist(todoArea,
-                function () { try { var a = JSON.parse(localStorage.getItem(clKey) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } },
-                function (arr) { if (arr.length) localStorage.setItem(clKey, JSON.stringify(arr)); else localStorage.removeItem(clKey); });
-            }
-          }
+          if (interactive) buildTodos(todoArea, iso);
         } else {
-          // 日記・自由記入（テキスト）区画
-          var key = (sec === 'diary') ? keyDiary(iso) : 'pt:' + iso + ':c:' + sec.slice(2);
+          // 日記区画
+          var key = keyDiary(iso);
           var ta = document.createElement('textarea');
-          ta.className = 'page-text ' + (sec === 'diary' ? 'diary' : 'custom-text');
-          ta.placeholder = interactive ? (sec === 'diary' ? tx('diaryPlaceholder') : sectionLabel(sec) + '…') : '';
+          ta.className = 'page-text diary';
+          ta.placeholder = interactive ? tx('diaryPlaceholder') : '';
           ta.value = localStorage.getItem(key) || '';
           ta.spellcheck = false;
           if (interactive) {
             ta.addEventListener('input', function () {
               if (ta.value) localStorage.setItem(key, ta.value);
               else localStorage.removeItem(key);
-              if (sec === 'diary' && !ta._statCounted) { ta._statCounted = true; statBump('diary'); }
+              if (!ta._statCounted) { ta._statCounted = true; statBump('diary'); }
               flashSaved();
             });
           } else {
@@ -2700,8 +2605,8 @@
             }
           } else {
             pendingRow = null;
-            // 最後の全幅テキスト区画（日記/自由記入）は紙の残り全部に伸ばす
-            if (sec === lastSec && (sec === 'diary' || sectionKind(sec) === 'text') && sec !== 'plan' && sec !== 'study' && sectionKind(sec) !== 'check') {
+            // 最後が日記なら、紙の残り全部に伸ばす
+            if (sec === lastSec && sec === 'diary') {
               block.classList.add('grow');
             }
             body.appendChild(block);
@@ -3170,20 +3075,19 @@
     });
   })();
 
-  // 区画の追加ピッカー（日のページの「＋ 区画を追加」タイル）。既存の未使用の組み込み区画と
-  // 自分の区画（設定で作成済みのもの）をチップで並べ、タップでその場に足す
+  // 区画の追加ピッカー（日のページの「＋ 区画を追加」タイル）。未使用の組み込み区画を
+  // チップで並べ、タップでその場に足す
   function toggleSectionAddPicker(body, addTile) {
     var existing = body.querySelector('.edit-add-picker');
     if (existing) { existing.remove(); return; }
     var active = getSections();
-    var candidates = SECTION_IDS.concat(Object.keys(customDefs()).map(function (id) { return 'c:' + id; }))
-      .filter(function (id) { return active.indexOf(id) === -1; });
+    var candidates = SECTION_IDS.filter(function (id) { return active.indexOf(id) === -1; });
     var picker = document.createElement('div');
     picker.className = 'edit-add-picker week-chips';
     if (candidates.length === 0) {
       var note = document.createElement('div');
       note.className = 'edit-hint';
-      note.textContent = '足せる区画がありません。設定の「自分の区画」から新しく作れます。';
+      note.textContent = '足せる区画は全部足しました。';
       picker.appendChild(note);
     }
     candidates.forEach(function (id) {
@@ -4853,109 +4757,6 @@
       });
     }
 
-    // 自分の区画。設定でできるのは「定義」の作成・名前変更・削除だけ。
-    // ページに足す・並べ替える・幅を変えるのは日のページを長押しして編集する（main画面側）
-    var sectionChips = document.getElementById('sectionChips');
-    var sectionAddMenu = document.getElementById('sectionAddMenu');
-    function renderSectionChips() {
-      sectionChips.innerHTML = '';
-      var defs = customDefs();
-      var ids = Object.keys(defs);
-      if (ids.length === 0) {
-        var note = document.createElement('div');
-        note.className = 'settings-note';
-        note.style.marginTop = '0';
-        note.textContent = 'まだ自分の区画はありません。下で作れます。';
-        sectionChips.appendChild(note);
-      }
-      ids.forEach(function (shortId) {
-        var def = defs[shortId];
-        var row = document.createElement('div');
-        row.className = 'sec-row';
-
-        var nameInp = document.createElement('input');
-        nameInp.type = 'text';
-        nameInp.className = 'sec-name-input';
-        nameInp.value = def.n;
-        nameInp.maxLength = 12;
-        nameInp.addEventListener('change', function () {
-          var v = (nameInp.value || '').trim();
-          if (!v) { nameInp.value = def.n; return; }
-          renameCustomSection('c:' + shortId, v);
-          flashSaved();
-        });
-        row.appendChild(nameInp);
-
-        var kindEl = document.createElement('span');
-        kindEl.className = 'sec-kind';
-        kindEl.textContent = def.k === 'check' ? 'チェックリスト' : '自由記入';
-        row.appendChild(kindEl);
-
-        var del = document.createElement('button');
-        del.type = 'button'; del.className = 'sec-btn danger'; del.textContent = '×';
-        del.addEventListener('click', function () {
-          deleteCustomSectionDef('c:' + shortId);
-          renderSectionChips();
-          refreshCurrentPage();
-          flashSaved();
-        });
-        row.appendChild(del);
-
-        sectionChips.appendChild(row);
-      });
-    }
-    function renderSectionAddMenu() {
-      sectionAddMenu.innerHTML = '';
-      // 自分の区画を作るフォーム（名前＋種類）
-      var form = document.createElement('div');
-      form.className = 'sec-new-form';
-      var nameRow = document.createElement('div');
-      nameRow.className = 'link-enter-row';
-      var nameInp = document.createElement('input');
-      nameInp.type = 'text';
-      nameInp.className = 'write-input';
-      nameInp.placeholder = '自分の区画の名前（例: 筋トレ、読書）';
-      nameInp.maxLength = 12;
-      nameRow.appendChild(nameInp);
-      form.appendChild(nameRow);
-
-      var kind = 'text';
-      var kindWrap = document.createElement('div');
-      kindWrap.className = 'week-chips';
-      kindWrap.style.marginTop = '8px';
-      var kindBtns = [['text', '自由記入'], ['check', 'チェックリスト']].map(function (opt) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.style.cssText = 'width:auto; padding:0 14px; border-radius:20px;';
-        b.textContent = opt[1];
-        b.className = kind === opt[0] ? 'active' : '';
-        b.addEventListener('click', function () {
-          kind = opt[0];
-          kindBtns.forEach(function (kb, j) { kb.className = (kind === ['text', 'check'][j]) ? 'active' : ''; });
-        });
-        kindWrap.appendChild(b);
-        return b;
-      });
-      form.appendChild(kindWrap);
-
-      var mk = document.createElement('button');
-      mk.type = 'button';
-      mk.className = 'link-join';
-      mk.style.marginTop = '8px';
-      mk.textContent = 'この区画を作る';
-      mk.addEventListener('click', function () {
-        var n = (nameInp.value || '').trim();
-        if (!n) { nameInp.focus(); return; }
-        createCustomSection(n, kind);
-        nameInp.value = '';
-        renderSectionChips();
-        flashSaved();
-      });
-      form.appendChild(mk);
-      sectionAddMenu.appendChild(form);
-    }
-    renderSectionAddMenu();
-
     // つかいかたの統計トグル
     var statsToggle = document.getElementById('statsToggle');
     function updateStatsToggle() {
@@ -5016,7 +4817,6 @@
 
     document.getElementById('menuSettings').addEventListener('click', function () {
       menuPanel.style.display = 'none';
-      renderSectionChips();
       renderChips();
       renderPaperChips();
       renderFontChips();
