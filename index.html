@@ -1667,6 +1667,18 @@
       </div>
       <button id="linkStartBtn" type="button" class="settings-close" style="margin-top:8px;">コードを作る（手帳から始める）</button>
     </div>
+    <p class="settings-label" style="margin-top:16px;">自動バックアップ（じぶんのひかえ）</p>
+    <p id="vaultStatus" class="settings-note" style="margin-top:0;"></p>
+    <div id="vaultOnBox">
+      <div class="link-code-row"><span id="vaultCodeShow" class="link-code"></span><button id="vaultCopyBtn" type="button" class="settings-close" style="margin-top:0; width:auto; padding:8px 12px;">コピー</button></div>
+      <p class="settings-note" style="margin-top:6px;">↑この<b>復元コード</b>をスクショか紙にひかえてください。アプリを消しても機種変しても、コードを入れれば全部戻せます。</p>
+    </div>
+    <div class="link-enter-row" style="margin-top:8px;">
+      <input id="vaultRestoreInput" type="text" class="write-input" placeholder="復元コードを入れて戻す" autocapitalize="characters" autocorrect="off" spellcheck="false">
+      <button id="vaultRestoreBtn" type="button" class="link-join">復元</button>
+    </div>
+    <button id="vaultToggleBtn" type="button" class="settings-close" style="margin-top:8px;"></button>
+
     <p class="settings-label" style="margin-top:16px;">データのひかえ</p>
     <p id="backupStatus" class="settings-note" style="margin-top:0;">手帳の中身をファイルに保存できます。機種変や、ホーム画面のアイコンを消す前のお守りに。</p>
     <div style="display:flex; gap:8px;">
@@ -5113,8 +5125,174 @@
     navigator.storage.persist().catch(function () {});
   }
 
+  // ---- 自動バックアップ（じぶんのひかえ）: 書くたびに全データをサーバーへ預ける ----
+  // アイコン削除・機種変・iOSのデータ削除でlocalStorageが全損しても、復元コードで戻せる。
+  // 2026-07-20、実際にホーム画面PWAのアイコン入れ直しでメモが全消失した事故を受けて追加。
+  (function () {
+    var VAULT_KEEP = { 'pt:google-token': 1, 'pt:gcal-session-id': 1, 'pt:gcal-session-secret': 1 };   // 端末ローカルの認証。預けない・復元でも消さない
+    var VAULT_META = { 'pt:vaultCode': 1, 'pt:vaultAt': 1, 'pt:vaultOff': 1, 'pt:vaultNoticed': 1, 'pt:backupAt': 1, 'pt:backupNudgeAt': 1 };  // 管理用。預けない・変更してもpushしない
+    function vaultOn() { return localStorage.getItem('pt:vaultOff') !== '1'; }
+    function makeVaultCode() {
+      var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // 連携コードと同じ、紛らわしい字を除いた字種
+      var arr = new Uint8Array(12);
+      if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(arr);
+      else for (var i = 0; i < 12; i++) arr[i] = Math.floor(Math.random() * 256);
+      var s = '';
+      for (var j = 0; j < 12; j++) s += chars[arr[j] % chars.length];
+      return s;
+    }
+    function vaultCode() {
+      var c = localStorage.getItem('pt:vaultCode');
+      if (!c) {
+        // 同一オリジンで動く計画表が先にコードを作っていたら同じものを使う（ひかえ先を1つに）
+        c = localStorage.getItem('pk:vaultCode') || makeVaultCode();
+        localStorage.setItem('pt:vaultCode', c);
+      }
+      return c;
+    }
+    function collectItems() {
+      var items = {};
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf('pt:') !== 0 || VAULT_KEEP[k] || VAULT_META[k]) continue;
+        items[k] = localStorage.getItem(k);
+      }
+      return items;
+    }
+    var pushTimer = 0, pushing = false, queued = false;
+    function pushSoon() {
+      if (!vaultOn()) return;
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(pushNow, 4000);
+    }
+    function pushNow() {
+      if (!vaultOn() || pushing) { if (pushing) queued = true; return; }
+      pushing = true;
+      function done() {
+        pushing = false;
+        if (queued) { queued = false; pushSoon(); }
+      }
+      fetch(linkBase() + '/vault/push?code=' + encodeURIComponent(vaultCode()) + '&app=techo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: collectItems() }),
+        keepalive: true
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.ok) {
+          localStorage.setItem('pt:vaultAt', String(Date.now()));
+          renderVaultSection();
+          maybeNoticeCode();
+        }
+        done();
+      }).catch(function () { done(); });
+    }
+    // pt:データの書き込みを検知して数秒後にまとめて預ける（アプリ各所の保存コードは無改造）
+    var origSet = Storage.prototype.setItem, origRemove = Storage.prototype.removeItem;
+    function isAppKey(k) { return typeof k === 'string' && k.indexOf('pt:') === 0 && !VAULT_META[k] && !VAULT_KEEP[k]; }
+    Storage.prototype.setItem = function (k) { origSet.apply(this, arguments); if (this === window.localStorage && isAppKey(k)) pushSoon(); };
+    Storage.prototype.removeItem = function (k) { origRemove.apply(this, arguments); if (this === window.localStorage && isAppKey(k)) pushSoon(); };
+
+    function fmtAgo(t) {
+      var m = Math.floor((Date.now() - t) / 60000);
+      if (m < 1) return 'たった今';
+      if (m < 60) return m + '分前';
+      var h = Math.floor(m / 60);
+      if (h < 24) return h + '時間前';
+      return Math.floor(h / 24) + '日前';
+    }
+    function renderVaultSection() {
+      var st = document.getElementById('vaultStatus');
+      if (!st) return;
+      var onBox = document.getElementById('vaultOnBox');
+      var toggle = document.getElementById('vaultToggleBtn');
+      if (!vaultOn()) {
+        st.textContent = 'いまはオフです。オンにすると、書くたびに中身をサーバーへ自動で預け、アプリを消しても復元コードで戻せます。';
+        onBox.style.display = 'none';
+        toggle.textContent = '自動バックアップをはじめる';
+        return;
+      }
+      var at = parseInt(localStorage.getItem('pt:vaultAt') || '0', 10);
+      st.textContent = at
+        ? '書くたびに自動でサーバーへ預けています（最終: ' + fmtAgo(at) + '）。'
+        : '書くたびに自動でサーバーへ預けます（まだ預けていません。何か書くと始まります）。';
+      onBox.style.display = '';
+      document.getElementById('vaultCodeShow').textContent = vaultCode();
+      toggle.textContent = '自動バックアップをやめる';
+    }
+    document.getElementById('vaultCopyBtn').addEventListener('click', function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(vaultCode()).catch(function () {});
+      flashSaved('コピーしました');
+    });
+    document.getElementById('vaultToggleBtn').addEventListener('click', function () {
+      if (vaultOn()) {
+        if (!confirm('自動バックアップをやめますか？\nサーバーに預けた分は残りますが、以後は更新されません。')) return;
+        localStorage.setItem('pt:vaultOff', '1');
+      } else {
+        localStorage.removeItem('pt:vaultOff');
+        pushSoon();
+      }
+      renderVaultSection();
+      flashSaved();
+    });
+    document.getElementById('vaultRestoreBtn').addEventListener('click', function () {
+      var v = (document.getElementById('vaultRestoreInput').value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+      if (v.length < 8 || v.length > 40) { alert('コードの形式が違います。'); return; }
+      fetch(linkBase() + '/vault/pull?code=' + encodeURIComponent(v) + '&app=techo')
+        .then(function (r) { if (!r.ok) throw new Error('nf'); return r.json(); })
+        .then(function (j) {
+          if (!j || !j.items) throw new Error('bad');
+          var when = j.savedAt ? new Date(j.savedAt).toLocaleString('ja-JP') : '不明';
+          if (!confirm('ひかえ（' + when + ' 時点）の内容で、今の手帳の中身を置き換えます。よろしいですか？')) return;
+          var doomed = [];
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('pt:') === 0 && !VAULT_KEEP[k]) doomed.push(k);
+          }
+          doomed.forEach(function (k) { origRemove.call(localStorage, k); });
+          Object.keys(j.items).forEach(function (k) {
+            if (k.indexOf('pt:') === 0) origSet.call(localStorage, k, j.items[k]);
+          });
+          origSet.call(localStorage, 'pt:vaultCode', v);       // 以後もこのコードへ預ける
+          origSet.call(localStorage, 'pt:vaultNoticed', '1');
+          alert('戻しました。');
+          location.reload();
+        })
+        .catch(function () { alert('ひかえが見つかりませんでした。コードを確かめてください。'); });
+    });
+    // 初回の預け入れ成功時に、復元コードのひかえを一度だけ促す
+    function maybeNoticeCode() {
+      if (localStorage.getItem('pt:vaultNoticed')) return;
+      localStorage.setItem('pt:vaultNoticed', '1');
+      var bar = document.createElement('div');
+      bar.className = 'backup-nudge';
+      bar.innerHTML =
+        '<span class="backup-nudge-text">🔒 自動バックアップを始めました。復元コード <b>' + vaultCode() + '</b> をスクショか紙にひかえておくと、アプリを消しても機種変でも戻せます。</span>' +
+        '<span class="backup-nudge-btns"><button type="button" class="backup-nudge-open">設定で見る</button><button type="button" class="backup-nudge-later">わかった</button></span>';
+      document.body.appendChild(bar);
+      bar.querySelector('.backup-nudge-later').addEventListener('click', function () { bar.remove(); });
+      bar.querySelector('.backup-nudge-open').addEventListener('click', function () {
+        bar.remove();
+        var ms = document.getElementById('menuSettings');
+        if (ms) ms.click();
+      });
+    }
+    // 設定を開いたときに最新状態を表示
+    var msBtn = document.getElementById('menuSettings');
+    if (msBtn) msBtn.addEventListener('click', renderVaultSection);
+    renderVaultSection();
+    // 起動時にも一度預けておく（新版を開いた瞬間から守られるように）
+    if (vaultOn()) setTimeout(pushNow, 3000);
+    // アプリを離れるときも取りこぼさない（keepalive付きで送る）
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && pushTimer) { clearTimeout(pushTimer); pushNow(); }
+    });
+    // テスト用フック
+    window._vault = { pushNow: pushNow, code: vaultCode };
+  })();
+
   // ひかえ（バックアップ）の促し。書き込みが溜まっているのに「ファイルに保存」が
   // 一度もない/30日以上前なら、下部にやさしく知らせる（「あとで」で14日間は出さない）
+  // 自動バックアップ（上のvault）が直近7日以内に預けられていれば出さない
   (function () {
     var DAY = 86400000;
     function hasMeaningfulData() {
@@ -5130,6 +5308,8 @@
     function shouldNudge() {
       if (!hasMeaningfulData()) return false;
       var now = Date.now();
+      var vaultAt = parseInt(localStorage.getItem('pt:vaultAt') || '0', 10);
+      if (vaultAt && now - vaultAt < 7 * DAY) return false;   // 自動バックアップが効いていれば促さない
       var backupAt = parseInt(localStorage.getItem('pt:backupAt') || '0', 10);
       if (backupAt && now - backupAt < 30 * DAY) return false;
       var nudgeAt = parseInt(localStorage.getItem('pt:backupNudgeAt') || '0', 10);
