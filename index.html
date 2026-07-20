@@ -1100,6 +1100,7 @@
     padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px));
   }
   .settings-card {
+    position: relative;
     margin: auto;
     width: 100%;
     max-width: 340px;
@@ -1228,6 +1229,26 @@
     color: #5b5f6b;
   }
   .howto-list li { margin-bottom: 4px; }
+  /* カード右上の×（とじる）。計画表と同じ */
+  .card-close-x {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    font-size: 22px;
+    line-height: 1;
+    color: #8a8d99;
+    cursor: pointer;
+  }
+  .card-close-x:active { background: rgba(120, 100, 60, 0.12); }
+
   .settings-close {
     margin-top: 14px;
     width: 100%;
@@ -1538,6 +1559,7 @@
 </div>
 <div id="settingsModal" class="settings-modal" style="display:none;">
   <div class="settings-card">
+    <button id="settingsCloseX" type="button" class="card-close-x" aria-label="とじる">×</button>
     <h2>設定</h2>
     <p class="settings-label" style="margin-top:0;">自分の区画</p>
     <p class="settings-note" style="margin-top:0;">名前をつけた自分だけの区画（自由記入 or チェックリスト）をここで作ります。ページに足す・並べ替える・幅を変えるのは、日のページの区画を長押しすると編集できます。</p>
@@ -4832,6 +4854,9 @@
       window.open('privacy.html', '_blank');
     });
     document.getElementById('settingsClose').addEventListener('click', function () {
+      modal.style.display = 'none';
+    });
+    document.getElementById('settingsCloseX').addEventListener('click', function () {
       modal.style.display = 'none';
     });
     modal.addEventListener('click', function (ev) {
