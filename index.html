@@ -1391,6 +1391,23 @@
   body[data-paper="board"] .book {
     text-shadow: 0 0 2px rgba(240, 238, 228, 0.28);
   }
+  /* 黒板の一番下に添える、チョークの木の挿し絵。::afterは実DOM子要素ではないので
+     renderPage()のel.innerHTML=''で消えない。z-index:-1で本文（すべてposition:absolute）
+     より奥へ（.paperのmaskは親ごとかかるので挿し絵もチョーク調に馴染む） */
+  body[data-paper="board"] .paper::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 130px;
+    z-index: -1;
+    pointer-events: none;
+    background-image: url('img/board-tree.webp');
+    background-repeat: no-repeat;
+    background-position: bottom center;
+    background-size: contain;
+  }
 
   /* 電光掲示板: 消灯LEDの格子が見える盤面。文字はドットフォント＋発光のにじみ */
   body[data-paper="led"] .paper {

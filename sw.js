@@ -4,14 +4,15 @@
 //   （更新がすぐ届き、オフラインでも開ける）
 // - 手書きフォント（Google Fonts）はキャッシュ優先の使い回し。一度表示した字の
 //   サブセットから順にオフラインで使えるようになる
-var CACHE = 'tezawari-v25';
+var CACHE = 'tezawari-v26';
 var SHELL = [
   './',
   './manifest.webmanifest',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
-  './chalk-mask.png'
+  './chalk-mask.png',
+  './img/board-tree.webp'
 ];
 
 self.addEventListener('install', function (ev) {
