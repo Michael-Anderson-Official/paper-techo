@@ -2173,8 +2173,11 @@
 
     var mark = closestMemoMark(range.startContainer, root);
     if (mark && mark === closestMemoMark(range.endContainer, root) && mark.textContent === range.toString()) {
+      var afterParent = mark.parentNode, afterIdx = Array.prototype.indexOf.call(afterParent.childNodes, mark);
       unwrapMemoMark(mark);
-      sel.removeAllRanges();
+      // 外した位置にカーソルを置く（normalize()で前後のテキストノードと結合され得るので、
+      // 位置は「元々枠があった場所」を親要素基準のオフセットで求め直す）
+      placeCaretAtParentOffset(afterParent, afterIdx);
       saveMemoNow(root);
       return;
     }
@@ -2191,8 +2194,130 @@
     // 囲んだ中に紛れ込んだ見えない文字（Enterのカーソル目印など）はその場で取り除く。
     // 残すとチョーク字などのフォントで「小さい棒」に見える（2026-07-20ユーザー報告）
     stripGhostChars(span);
-    sel.removeAllRanges();
+    // 囲んだ直後は枠のすぐ外にカーソルを置く（続けて文字が打てるように）。
+    // ただしDOM上のカーソル位置を外に置くだけでは、ブラウザが「直前の書式（枠）を引き継ぐ」
+    // 性質のため続けて打った文字が枠の中に入ってしまうことがある（2026-07-20ユーザー報告）。
+    // なのでカーソル配置に加えて、直後の1回の入力（IME確定含む）だけ監視し、枠の末尾に
+    // 文字が増えていたら外へ移す事後修正（fixMarkOverflow、input/compositionendで発火）も併用する
+    placeCaretAfter(span);
+    armMarkFix(span);
     saveMemoNow(root);
+  }
+  // 丸/四角を付けた直後だけ有効な「事後修正」の監視対象
+  var pendingMarkFix = null;
+  function armMarkFix(span) {
+    pendingMarkFix = { span: span, prevText: span.textContent };
+    // 長く居座らせない（ユーザーが別の場所を編集し始めた後まで誤って発火させないため）
+    clearTimeout(armMarkFix._timer);
+    armMarkFix._timer = setTimeout(function () { pendingMarkFix = null; }, 4000);
+  }
+  function fixMarkOverflow() {
+    var pm = pendingMarkFix;
+    if (!pm) return;
+    pendingMarkFix = null;
+    if (!pm.span || !pm.span.isConnected) return;
+    var cur = pm.span.textContent;
+    // 末尾に追記された分だけを特定（先頭がそのまま残っていること前提）
+    if (cur.length <= pm.prevText.length || cur.indexOf(pm.prevText) !== 0) return;
+    var added = cur.slice(pm.prevText.length);
+    var lastT = lastTextNode(pm.span);
+    if (!lastT || lastT.nodeValue.slice(-added.length) !== added) return;
+    lastT.nodeValue = lastT.nodeValue.slice(0, -added.length);
+    var after = pm.span.nextSibling;
+    var target, targetOffset;
+    if (after && after.nodeType === 3) {
+      after.nodeValue = added + after.nodeValue;
+      target = after; targetOffset = added.length;
+    } else {
+      target = document.createTextNode(added);
+      pm.span.parentNode.insertBefore(target, after);
+      targetOffset = added.length;
+    }
+    var r = document.createRange();
+    r.setStart(target, targetOffset);
+    r.collapse(true);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  // node の直後（親要素内の隣、nodeの外）にカーソルを置く。
+  // 空のテキストノードを実際に挿入してそこへ収める（詳細は上のコメント参照）
+  function placeCaretAfter(node) {
+    var parent = node.parentNode;
+    var after = node.nextSibling;
+    var anchor;
+    if (after && after.nodeType === 3) {
+      anchor = after;   // 既にテキストノードが続いているならそこの先頭へ
+      var r = document.createRange();
+      r.setStart(anchor, 0);
+      r.collapse(true);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } else {
+      anchor = document.createTextNode('');
+      parent.insertBefore(anchor, after);
+      var r2 = document.createRange();
+      r2.setStart(anchor, 0);
+      r2.collapse(true);
+      var sel2 = window.getSelection();
+      sel2.removeAllRanges();
+      sel2.addRange(r2);
+    }
+    if (parent.closest && parent.closest('.page-text.memo')) parent.closest('.page-text.memo').focus();
+  }
+  function placeCaretAtParentOffset(parent, offset) {
+    var range = document.createRange();
+    range.setStart(parent, Math.min(offset, parent.childNodes.length));
+    range.collapse(true);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    if (parent.closest && parent.closest('.page-text.memo')) parent.closest('.page-text.memo').focus();
+  }
+  // 〇/□の右または左の余白（padding+margin）をタップすると、見た目は枠の外なのに
+  // カーソルが枠の中（先頭/末尾）に置かれてしまう（WebKit/Blink共通、インライン要素の
+  // 当たり判定の癖）。カーソルが枠のちょうど先頭/末尾に来ていて、タップ位置が実際の
+  // 文字よりも外側の余白部分なら、カーソルを枠のすぐ外へ出す。
+  // node配下の最初/最後のテキストノードを探す（'(要素,子インデックス)'形式と
+  // '(テキスト,文字オフセット)'形式の境界点はcompareBoundaryPointsで食い違うことがあるため、
+  // 比較は必ずテキストノード同士に揃える）
+  function firstTextNode(node) {
+    if (node.nodeType === 3) return node;
+    for (var c = node.firstChild; c; c = c.nextSibling) {
+      var t = firstTextNode(c);
+      if (t) return t;
+    }
+    return null;
+  }
+  function lastTextNode(node) {
+    if (node.nodeType === 3) return node;
+    for (var c = node.lastChild; c; c = c.previousSibling) {
+      var t = lastTextNode(c);
+      if (t) return t;
+    }
+    return null;
+  }
+  function nudgeCaretOutOfMarkPadding(root, clientX) {
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+    var node = sel.anchorNode, offset = sel.anchorOffset;
+    if (!node || !root.contains(node)) return;
+    var mark = closestMemoMark(node, root);
+    if (!mark) return;
+    var firstT = firstTextNode(mark), lastT = lastTextNode(mark);
+    if (!firstT || !lastT) return;
+    var atStart = (node === firstT && offset === 0);
+    var atEnd = (node === lastT && offset === lastT.nodeValue.length);
+    if (!atEnd && !atStart) return;
+    var rect = mark.getBoundingClientRect();
+    var cs = getComputedStyle(mark);
+    if (atEnd && clientX > rect.right - (parseFloat(cs.paddingRight) || 0) - (parseFloat(cs.marginRight) || 0)) {
+      placeCaretAfter(mark);
+    } else if (atStart && clientX < rect.left + (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.marginLeft) || 0)) {
+      var parent = mark.parentNode;
+      placeCaretAtParentOffset(parent, Array.prototype.indexOf.call(parent.childNodes, mark));
+    }
   }
   // 見えない文字（U+200B/FEFF/FFFC）をテキストノードから取り除く
   function stripGhostChars(node) {
@@ -2581,13 +2706,18 @@
       memoDiv.spellcheck = false;
       if (interactive) {
         memoDiv.contentEditable = 'true';
-        memoDiv.addEventListener('input', function () {
+        memoDiv.addEventListener('input', function (ev) {
+          // 丸/四角を付けた直後の最初の入力は、ブラウザが「直前の書式（枠）を引き継ぐ」性質のため
+          // カーソルを枠の外へ置いておいても枠の中に打たれてしまうことがある。IME確定前
+          // （ev.isComposing）は変換候補中なので触らず、確定後に一度だけ直す
+          if (!ev.isComposing) fixMarkOverflow();
           // 全部消したときに<br>だけ残ってプレースホルダーが出ない状態になるのを防ぐ（\u200bは下のEnter処理が置くカーソルの目印）
           if (!memoDiv.textContent.replace(/\u200b/g, '') && !memoDiv.querySelector('.mark-circle, .mark-box')) memoDiv.innerHTML = '';
           localStorage.setItem('pt:memo', sanitizeMemoHtml(memoDiv.innerHTML));
           if (!memoDiv._statCounted) { memoDiv._statCounted = true; statBump('memo'); }
           flashSaved();
         });
+        memoDiv.addEventListener('compositionend', fixMarkOverflow);
         // Enterは改行だけ（見出し用の<div>ブロックを作られると囲み判定が崩れるため手動で<br>を入れる）。
         // <br>の直後にカーソルを置いても、それが末尾のときブラウザは「brの手前」に丸め直してしまう
         // （そのまま打つと直前の文字にくっつく）ので、目印になる幅ゼロの文字を1つ置いてそこにカーソルを刺す
@@ -2628,6 +2758,10 @@
           range.insertNode(frag);
           if (lastNode) { range.setStartAfter(lastNode); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
           memoDiv.dispatchEvent(new Event('input'));
+        });
+        // 〇/□の余白をタップして枠の中にカーソルが吸い込まれた場合、枠の外へ出す
+        memoDiv.addEventListener('click', function (ev) {
+          nudgeCaretOutOfMarkPadding(memoDiv, ev.clientX);
         });
       } else {
         memoDiv.contentEditable = 'false';
@@ -5140,7 +5274,7 @@
   });
 
   // テスト用フック（アプリ動作には不使用）
-  window._pt = { rokuyoOf: rokuyoOf };
+  window._pt = { rokuyoOf: rokuyoOf, nudgeCaretOutOfMarkPadding: nudgeCaretOutOfMarkPadding };
 
   // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
