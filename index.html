@@ -2107,6 +2107,8 @@
   // ---- メモ（日付に属さない自由記入。文字を〇/□で囲める） ----
   // 保存形式はテキストノード＋<br>＋<span class="mark-circle|mark-box">のみに限定したHTML（pt:memo）。
   // 貼り付け経由の余計なタグ・属性が混ざっても、保存直前とロード直後の両方でこの許可リストにかけて無害化する。
+  // 本文に残ると害になる見えない文字（U+200B=Enterのカーソル目印/U+FEFF/U+FFFC）
+  var GHOST_CHARS_RE = /[\u200b\ufeff\ufffc]/g;
   function sanitizeMemoHtml(html) {
     var tmp = document.createElement('div');
     tmp.innerHTML = html || '';
@@ -2114,7 +2116,16 @@
       var child = node.firstChild;
       while (child) {
         var next = child.nextSibling;
-        if (child.nodeType === 1) {
+        if (child.nodeType === 3) {
+          // 見えない文字の掃除。U+200BはEnter処理がカーソルの目印に置くもので、本文に残り続けると
+          // チョーク字などのフォントで「小さい棒」として見えてしまう（丸で囲むと一緒に囲まれる）。
+          // 保存・読み込みの両方で毎回落とす（目印は編集中のDOMにだけあれば足りる）
+          var cleaned = child.nodeValue.replace(GHOST_CHARS_RE, '');
+          if (cleaned !== child.nodeValue) {
+            if (cleaned) child.nodeValue = cleaned;
+            else node.removeChild(child);
+          }
+        } else if (child.nodeType === 1) {
           var tag = child.tagName.toLowerCase();
           if (tag === 'br') {
             while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
@@ -2177,8 +2188,26 @@
       span.appendChild(frag);
       range.insertNode(span);
     }
+    // 囲んだ中に紛れ込んだ見えない文字（Enterのカーソル目印など）はその場で取り除く。
+    // 残すとチョーク字などのフォントで「小さい棒」に見える（2026-07-20ユーザー報告）
+    stripGhostChars(span);
     sel.removeAllRanges();
     saveMemoNow(root);
+  }
+  // 見えない文字（U+200B/FEFF/FFFC）をテキストノードから取り除く
+  function stripGhostChars(node) {
+    var child = node.firstChild;
+    while (child) {
+      var next = child.nextSibling;
+      if (child.nodeType === 3) {
+        var cleaned = child.nodeValue.replace(GHOST_CHARS_RE, '');
+        if (cleaned) child.nodeValue = cleaned;
+        else node.removeChild(child);
+      } else if (child.nodeType === 1) {
+        stripGhostChars(child);
+      }
+      child = next;
+    }
   }
   function saveMemoNow(root) {
     localStorage.setItem('pt:memo', sanitizeMemoHtml(root.innerHTML));
