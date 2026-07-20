@@ -1229,6 +1229,43 @@
     color: #5b5f6b;
   }
   .howto-list li { margin-bottom: 4px; }
+  /* ひかえ（バックアップ）の促しバー */
+  .backup-nudge {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #f8f3e6;
+    border: 1px solid rgba(120, 100, 60, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(30, 22, 10, 0.4);
+    color: #454a58;
+  }
+  .backup-nudge-text { font-size: 12.5px; line-height: 1.55; }
+  .backup-nudge-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .backup-nudge-btns button {
+    padding: 7px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .backup-nudge-open {
+    color: #4a4030;
+    background: linear-gradient(180deg, #f3ecd9, #e7dfc8);
+    border: 1px solid rgba(120, 100, 60, 0.35);
+  }
+  .backup-nudge-later {
+    color: #8a8d99;
+    background: transparent;
+    border: 1px solid rgba(120, 100, 60, 0.2);
+  }
+
   /* カード右上の×（とじる）。計画表と同じ */
   .card-close-x {
     position: absolute;
@@ -5000,6 +5037,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      localStorage.setItem('pt:backupAt', String(Date.now()));   // ひかえ促しの抑止に使う
       if (statusEl) statusEl.textContent = '保存しました。ファイルは大切にしまっておいてください。';
     });
 
@@ -5067,6 +5105,57 @@
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(function () { /* 未対応環境 */ });
   }
+
+  // ストレージの永続化をOSに要求する。要求しないと、iOSは空き容量が減ったときに
+  // このアプリのデータ（メモ・日記の全部）を"消してよいもの"として削除することがある
+  // （2026-07-20、実際にホーム画面PWAでメモが全消失した報告あり）
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(function () {});
+  }
+
+  // ひかえ（バックアップ）の促し。書き込みが溜まっているのに「ファイルに保存」が
+  // 一度もない/30日以上前なら、下部にやさしく知らせる（「あとで」で14日間は出さない）
+  (function () {
+    var DAY = 86400000;
+    function hasMeaningfulData() {
+      var size = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf('pt:') !== 0) continue;
+        size += (localStorage.getItem(k) || '').length;
+        if (size > 300) return true;
+      }
+      return false;
+    }
+    function shouldNudge() {
+      if (!hasMeaningfulData()) return false;
+      var now = Date.now();
+      var backupAt = parseInt(localStorage.getItem('pt:backupAt') || '0', 10);
+      if (backupAt && now - backupAt < 30 * DAY) return false;
+      var nudgeAt = parseInt(localStorage.getItem('pt:backupNudgeAt') || '0', 10);
+      if (nudgeAt && now - nudgeAt < 14 * DAY) return false;
+      return true;
+    }
+    setTimeout(function () {
+      if (!shouldNudge()) return;
+      var bar = document.createElement('div');
+      bar.className = 'backup-nudge';
+      bar.innerHTML =
+        '<span class="backup-nudge-text">手帳の中身はこの端末の中だけにあります。ときどき「ひかえ」をファイルに保存しておくと、機種変や万一の消失でも戻せます。</span>' +
+        '<span class="backup-nudge-btns"><button type="button" class="backup-nudge-open">設定をひらく</button><button type="button" class="backup-nudge-later">あとで</button></span>';
+      document.body.appendChild(bar);
+      function dismiss() {
+        localStorage.setItem('pt:backupNudgeAt', String(Date.now()));
+        bar.remove();
+      }
+      bar.querySelector('.backup-nudge-later').addEventListener('click', dismiss);
+      bar.querySelector('.backup-nudge-open').addEventListener('click', function () {
+        dismiss();
+        var ms = document.getElementById('menuSettings');
+        if (ms) ms.click();
+      });
+    }, 2500);
+  })();
 })();
 </script>
 </body>
