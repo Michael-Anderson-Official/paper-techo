@@ -1403,7 +1403,7 @@
     height: 130px;
     z-index: -1;
     pointer-events: none;
-    background-image: url('img/board-tree.webp');
+    background-image: var(--board-tree-img, url('img/board-tree-summer.webp'));
     background-repeat: no-repeat;
     background-position: bottom center;
     background-size: contain;
@@ -2097,6 +2097,21 @@
   function applyPaperColor() {
     document.body.setAttribute('data-paper', getPaperColor());
     applyMemoFont();
+    applyBoardTreeSeason();
+  }
+
+  // 黒板の一番下の木の挿し絵を、気象学的な四季（3-5月=春/6-8月=夏/9-11月=秋/12-2月=冬）で
+  // 自動的に切り替える。CSS変数（既存の--write-fontと同じ流儀）に画像URLを入れるだけなので、
+  // 黒板以外のテーマでは何もしない（.paper::afterのbackground-imageが参照するのは黒板テーマのみ）
+  function boardTreeSeason(date) {
+    var m = (date || new Date()).getMonth() + 1;
+    if (m >= 3 && m <= 5) return 'spring';
+    if (m >= 6 && m <= 8) return 'summer';
+    if (m >= 9 && m <= 11) return 'autumn';
+    return 'winter';
+  }
+  function applyBoardTreeSeason() {
+    document.body.style.setProperty('--board-tree-img', "url('img/board-tree-" + boardTreeSeason() + ".webp')");
   }
 
   // メモ欄は唯一のcontenteditableで、iOSのSafariがCSS変数(--write-font)の変更を
@@ -5291,7 +5306,7 @@
   });
 
   // テスト用フック（アプリ動作には不使用）
-  window._pt = { rokuyoOf: rokuyoOf, nudgeCaretOutOfMarkPadding: nudgeCaretOutOfMarkPadding };
+  window._pt = { rokuyoOf: rokuyoOf, nudgeCaretOutOfMarkPadding: nudgeCaretOutOfMarkPadding, boardTreeSeason: boardTreeSeason };
 
   // オフライン対応（Service Worker）。file://で開いたときは黙って諦める
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
