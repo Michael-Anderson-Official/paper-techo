@@ -1358,15 +1358,18 @@
   }
   /* 黒板の一番下に添える、チョークの木の挿し絵。::afterは実DOM子要素ではないので
      renderPage()のel.innerHTML=''で消えない。z-index:-1で本文（すべてposition:absolute）
-     より奥へ（.paperのmaskは親ごとかかるので挿し絵もチョーク調に馴染む） */
+     より奥へ（.paperのmaskは親ごとかかるので挿し絵もチョーク調に馴染む）。
+     2026-07-21、現状の絵は縦横比が正方形寄り（900x507）で本文と被るため、横長版を
+     ChatGPTで作り直してもらう間、いったん非表示にする（display:none）。画像ファイルと
+     四季切り替えロジック（--board-tree-img）は残してあるので、横長画像を受け取ったら
+     display:blockに戻す＋aspect-ratioを新しい比率に直すだけで復活する */
   body[data-paper="board"] .paper::after {
     content: '';
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    /* 画像は900x507（横長）。固定pxの高さだと横幅が余って左右に余白が出るため、
-       画像の縦横比で高さを決める（=幅いっぱいに広がる）。高すぎないよう上限だけ設ける */
+    /* 帯状の横長画像に差し替えたら、その画像のwidth/heightでaspect-ratioを更新する */
     aspect-ratio: 900 / 507;
     max-height: 45%;
     z-index: -1;
@@ -1375,6 +1378,7 @@
     background-repeat: no-repeat;
     background-position: bottom center;
     background-size: contain;
+    display: none;   /* 横長版が用意できるまで一旦非表示（2026-07-21） */
   }
 
   /* 電光掲示板: 消灯LEDの格子が見える盤面。文字はドットフォント＋発光のにじみ */
