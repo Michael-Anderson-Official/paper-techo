@@ -1356,29 +1356,24 @@
   body[data-paper="board"] .book {
     text-shadow: 0 0 2px rgba(240, 238, 228, 0.28);
   }
-  /* 黒板の一番下に添える、チョークの木の挿し絵。::afterは実DOM子要素ではないので
-     renderPage()のel.innerHTML=''で消えない。z-index:-1で本文（すべてposition:absolute）
-     より奥へ（.paperのmaskは親ごとかかるので挿し絵もチョーク調に馴染む）。
-     2026-07-21、現状の絵は縦横比が正方形寄り（900x507）で本文と被るため、横長版を
-     ChatGPTで作り直してもらう間、いったん非表示にする（display:none）。画像ファイルと
-     四季切り替えロジック（--board-tree-img）は残してあるので、横長画像を受け取ったら
-     display:blockに戻す＋aspect-ratioを新しい比率に直すだけで復活する */
+  /* 黒板の一番下に添える、チョークの木の挿し絵（四季で自動切替）。::afterは実DOM子要素
+     ではないのでrenderPage()のel.innerHTML=''で消えない。z-index:-1で本文（すべて
+     position:absolute）より奥へ（.paperのmaskは親ごとかかるので挿し絵もチョーク調に馴染む）。
+     画像は横長の帯（1600x300＝縦横比16:3）。幅いっぱいに広げても高さは幅の3/16で収まり、
+     本文と被らない（2026-07-21、ユーザー作の横長版に差し替え） */
   body[data-paper="board"] .paper::after {
     content: '';
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    /* 帯状の横長画像に差し替えたら、その画像のwidth/heightでaspect-ratioを更新する */
-    aspect-ratio: 900 / 507;
-    max-height: 45%;
+    aspect-ratio: 1600 / 300;
     z-index: -1;
     pointer-events: none;
     background-image: var(--board-tree-img, url('img/board-tree-summer.webp'));
     background-repeat: no-repeat;
     background-position: bottom center;
     background-size: contain;
-    display: none;   /* 横長版が用意できるまで一旦非表示（2026-07-21） */
   }
 
   /* 電光掲示板: 消灯LEDの格子が見える盤面。文字はドットフォント＋発光のにじみ */
