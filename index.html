@@ -1365,7 +1365,10 @@
     left: 0;
     right: 0;
     bottom: 0;
-    height: 130px;
+    /* 画像は900x507（横長）。固定pxの高さだと横幅が余って左右に余白が出るため、
+       画像の縦横比で高さを決める（=幅いっぱいに広がる）。高すぎないよう上限だけ設ける */
+    aspect-ratio: 900 / 507;
+    max-height: 45%;
     z-index: -1;
     pointer-events: none;
     background-image: var(--board-tree-img, url('img/board-tree-summer.webp'));
