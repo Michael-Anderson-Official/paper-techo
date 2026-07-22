@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="170" height="170" viewBox="0 0 170 170">
+  <defs>
+    <!-- 桜の花びら（外側にちいさな切れ込み） -->
+    <path id="pt" d="M0,26 C-7,18 -7,8 -3,3 Q0,6 3,3 C7,8 7,18 0,26 Z"/>
+  </defs>
+  <g opacity="0.34" fill="#e2a0ba">
+    <use href="#pt" transform="translate(26,20) rotate(18) scale(0.95)"/>
+    <use href="#pt" transform="translate(104,30) rotate(-46) scale(0.72)"/>
+    <use href="#pt" transform="translate(150,74) rotate(28) scale(0.86)"/>
+    <use href="#pt" transform="translate(60,66) rotate(96) scale(0.8)"/>
+    <use href="#pt" transform="translate(122,110) rotate(-24) scale(0.9)"/>
+    <use href="#pt" transform="translate(30,116) rotate(140) scale(0.66)"/>
+    <use href="#pt" transform="translate(88,140) rotate(56) scale(0.78)"/>
+    <use href="#pt" transform="translate(152,146) rotate(-70) scale(0.6)"/>
+  </g>
+</svg>

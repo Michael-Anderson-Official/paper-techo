@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="300" viewBox="0 0 460 300">
+  <defs>
+    <!-- 5枚花びらの桜 -->
+    <g id="bl">
+      <g fill="#edb0c6" stroke="#d98da8" stroke-width="1">
+        <ellipse cx="0" cy="-9" rx="5.2" ry="8"/>
+        <ellipse cx="0" cy="-9" rx="5.2" ry="8" transform="rotate(72)"/>
+        <ellipse cx="0" cy="-9" rx="5.2" ry="8" transform="rotate(144)"/>
+        <ellipse cx="0" cy="-9" rx="5.2" ry="8" transform="rotate(216)"/>
+        <ellipse cx="0" cy="-9" rx="5.2" ry="8" transform="rotate(288)"/>
+      </g>
+      <circle r="3" fill="#f4cf4a"/>
+    </g>
+    <!-- つぼみ -->
+    <g id="bud">
+      <ellipse cx="0" cy="0" rx="4" ry="6" fill="#e6a6be" stroke="#d98da8" stroke-width="0.8"/>
+      <path d="M0,6 q1,6 -1,11" fill="none" stroke="#8f9c5e" stroke-width="1.4" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <g opacity="0.7">
+    <!-- 枝（右上から左下へ弧を描く） -->
+    <g fill="none" stroke="#a2806a" stroke-linecap="round">
+      <path d="M458,20 C 380,44 322,64 268,74 C 208,86 166,116 132,158" stroke-width="5.5"/>
+      <path d="M300,68 C 292,44 288,28 302,10" stroke-width="3"/>
+      <path d="M214,80 C 196,100 180,128 168,150" stroke-width="2.6"/>
+      <path d="M360,52 C 356,34 360,24 372,16" stroke-width="2.4"/>
+    </g>
+    <!-- 花 -->
+    <use href="#bl" transform="translate(430,26) scale(1.05) rotate(10)"/>
+    <use href="#bl" transform="translate(372,44) scale(1.15) rotate(-18)"/>
+    <use href="#bl" transform="translate(304,8) scale(0.92) rotate(24)"/>
+    <use href="#bl" transform="translate(258,66) scale(1.05) rotate(-8)"/>
+    <use href="#bl" transform="translate(300,64) scale(0.82) rotate(40)"/>
+    <use href="#bl" transform="translate(168,150) scale(1.0) rotate(-14)"/>
+    <use href="#bl" transform="translate(150,132) scale(0.85) rotate(30)"/>
+    <use href="#bl" transform="translate(408,60) scale(0.7) rotate(-30)"/>
+    <!-- つぼみ -->
+    <use href="#bud" transform="translate(376,14) rotate(-20) scale(0.9)"/>
+    <use href="#bud" transform="translate(132,158) rotate(30) scale(0.9)"/>
+    <use href="#bud" transform="translate(236,70) rotate(-40) scale(0.75)"/>
+  </g>
+</svg>
