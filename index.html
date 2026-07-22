@@ -126,6 +126,79 @@
     --shade-rgb: 0, 0, 0;
   }
 
+  /* 桜（淡い桜色の和紙。えんじの罫線・桃色マージン） */
+  body[data-paper="sakura"] {
+    --paper: #fdeef2;
+    --paper-back-1: #f6e2e8;
+    --paper-back-2: #fbe9ef;
+    --paper-back-3: #f0d6de;
+    --ink-strong: #5a4750;
+    --ink-text: #5f4c54;
+    --ink-soft: #a98d96;
+    --placeholder: rgba(150, 110, 125, 0.4);
+    --rule: rgba(210, 150, 175, 0.35);
+    --rule-strong: rgba(210, 150, 175, 0.5);
+    --margin-line: rgba(224, 130, 150, 0.6);
+    --print: #b06a86;
+    --print-soft: #c28ba0;
+    --sun: #d9607e;
+    --sat: #7f8fc4;
+    --today-ring: rgba(220, 100, 130, 0.8);
+    --stitch: rgba(180, 120, 140, 0.4);
+    --divider-label: #c07d95;
+    --mark: rgba(90, 71, 80, 0.4);
+    --mg-border: rgba(200, 150, 170, 0.3);
+    --shade-rgb: 120, 70, 90;
+  }
+  /* ミント（淡い緑＋白罫。爽やか・中性的） */
+  body[data-paper="mint"] {
+    --paper: #eef7f1;
+    --paper-back-1: #e0efe6;
+    --paper-back-2: #e9f4ee;
+    --paper-back-3: #d4e7db;
+    --ink-strong: #3f4f48;
+    --ink-text: #44544c;
+    --ink-soft: #8aa197;
+    --placeholder: rgba(90, 130, 110, 0.4);
+    --rule: rgba(120, 180, 150, 0.35);
+    --rule-strong: rgba(120, 180, 150, 0.5);
+    --margin-line: rgba(120, 190, 165, 0.55);
+    --print: #4f8f78;
+    --print-soft: #74a892;
+    --sun: #cf6f5f;
+    --sat: #5b8fa6;
+    --today-ring: rgba(70, 160, 120, 0.8);
+    --stitch: rgba(100, 140, 120, 0.4);
+    --divider-label: #7ba491;
+    --mark: rgba(63, 79, 72, 0.4);
+    --mg-border: rgba(120, 170, 150, 0.3);
+    --shade-rgb: 40, 80, 60;
+  }
+  /* 藤色（くすみ紫の大人可愛い） */
+  body[data-paper="lavender"] {
+    --paper: #f2eef8;
+    --paper-back-1: #e7e0f0;
+    --paper-back-2: #ece6f4;
+    --paper-back-3: #ddd3ec;
+    --ink-strong: #4c4658;
+    --ink-text: #514b5e;
+    --ink-soft: #9a8fae;
+    --placeholder: rgba(120, 105, 145, 0.4);
+    --rule: rgba(160, 140, 200, 0.32);
+    --rule-strong: rgba(160, 140, 200, 0.48);
+    --margin-line: rgba(180, 140, 205, 0.55);
+    --print: #7a6aa0;
+    --print-soft: #9587b5;
+    --sun: #c56b8f;
+    --sat: #6f7fc4;
+    --today-ring: rgba(150, 110, 190, 0.8);
+    --stitch: rgba(140, 120, 160, 0.4);
+    --divider-label: #9a82b0;
+    --mark: rgba(76, 70, 88, 0.4);
+    --mg-border: rgba(160, 140, 190, 0.3);
+    --shade-rgb: 90, 70, 120;
+  }
+
   /* 机（背景）。木目っぽい暗色で紙を引き立てる */
   body {
     background:
@@ -1411,31 +1484,17 @@
   }
 
   /* すべての紙色で、☰メニュー・インデックスタブ・下の道具ボタンをその紙の盤面に溶け込ませる */
-  body[data-paper="ivory"] .menu-btn,
-  body[data-paper="white"] .menu-btn,
-  body[data-paper="black"] .menu-btn,
-  body[data-paper="board"] .menu-btn,
-  body[data-paper="led"] .menu-btn,
-  body[data-paper="ivory"] .book-tab,
-  body[data-paper="white"] .book-tab,
-  body[data-paper="black"] .book-tab,
-  body[data-paper="board"] .book-tab,
-  body[data-paper="led"] .book-tab,
-  body[data-paper="ivory"] .toolbar button,
-  body[data-paper="white"] .toolbar button,
-  body[data-paper="black"] .toolbar button,
-  body[data-paper="board"] .toolbar button,
-  body[data-paper="led"] .toolbar button {
+  /* ☰メニュー・タブ・道具ボタンをその紙面に溶け込ませる（全テーマ共通。
+     applyPaperColorが必ずdata-paperを付けるので[data-paper]で全色に効く＝新テーマも自動対応） */
+  body[data-paper] .menu-btn,
+  body[data-paper] .book-tab,
+  body[data-paper] .toolbar button {
     background: var(--paper-back-2);
     border-color: var(--rule-strong);
     color: var(--ink-text);
     box-shadow: none;
   }
-  body[data-paper="ivory"] .book-tab.active,
-  body[data-paper="white"] .book-tab.active,
-  body[data-paper="black"] .book-tab.active,
-  body[data-paper="board"] .book-tab.active,
-  body[data-paper="led"] .book-tab.active {
+  body[data-paper] .book-tab.active {
     background: var(--paper-back-1);
     color: var(--ink-strong);
     border-color: var(--rule-strong);
@@ -1969,6 +2028,9 @@
     ['ivory', 'アイボリー', '#fdf8ea', '#4a4e5c', false],
     ['white', '白', '#fcfcfb', '#4a4e5c', false],
     ['black', '黒', '#23252a', '#e8e6df', false],
+    ['sakura', '桜', '#fdeef2', '#5f4c54', true],
+    ['mint', 'ミント', '#eef7f1', '#44544c', true],
+    ['lavender', '藤色', '#f2eef8', '#514b5e', true],
     ['board', '黒板', '#33584a', '#f0ede2', true],
     ['led', '電光掲示板', '#0e1013', '#ffb02e', true]
   ];
